@@ -1,0 +1,47 @@
+
+samples per expected value: 500
+
+len =   3, E(t_ser) =    19, E(t_par) =    22, ratio = 0.8636363636363636
+len =   4, E(t_ser) =    51, E(t_par) =    62, ratio = 0.8225806451612904
+len =   5, E(t_ser) =   101, E(t_par) =   127, ratio = 0.7952755905511811
+len =   6, E(t_ser) =   174, E(t_par) =   233, ratio = 0.7467811158798283
+len =   7, E(t_ser) =   283, E(t_par) =   360, ratio = 0.7861111111111111
+len =   8, E(t_ser) =   411, E(t_par) =   577, ratio = 0.7123050259965338
+len =   9, E(t_ser) =   601, E(t_par) =   809, ratio = 0.7428924598269468
+len =  10, E(t_ser) =   817, E(t_par) =  1081, ratio = 0.755781683626272
+len =  11, E(t_ser) =  1051, E(t_par) =  1440, ratio = 0.7298611111111111
+len =  12, E(t_ser) =  1350, E(t_par) =  1815, ratio = 0.743801652892562
+len =  13, E(t_ser) =  1673, E(t_par) =  2348, ratio = 0.7125212947189097
+len =  14, E(t_ser) =  2075, E(t_par) =  2854, ratio = 0.7270497547302032
+len =  15, E(t_ser) =  2522, E(t_par) =  3590, ratio = 0.7025069637883008
+len =  16, E(t_ser) =  2871, E(t_par) =  4147, ratio = 0.6923076923076923
+len =  17, E(t_ser) =  3272, E(t_par) =  4999, ratio = 0.6545309061812362
+len =  18, E(t_ser) =  4012, E(t_par) =  5789, ratio = 0.6930385213335637
+len =  19, E(t_ser) =  4491, E(t_par) =  6616, ratio = 0.6788089480048367
+len =  20, E(t_ser) =  5250, E(t_par) =  7875, ratio = 0.6666666666666666
+len =  21, E(t_ser) =  6235, E(t_par) =  9082, ratio = 0.6865227923364897
+len =  22, E(t_ser) =  6673, E(t_par) = 10158, ratio = 0.6569206536719827
+len =  23, E(t_ser) =  7538, E(t_par) = 11055, ratio = 0.6818634102216192
+len =  24, E(t_ser) =  8502, E(t_par) = 12833, ratio = 0.6625107145640147
+len =  25, E(t_ser) =  9231, E(t_par) = 13851, ratio = 0.6664500758068009
+len =  26, E(t_ser) = 10438, E(t_par) = 15682, ratio = 0.6656038770564979
+len =  27, E(t_ser) = 11585, E(t_par) = 17349, ratio = 0.6677618306530636
+len =  28, E(t_ser) = 13029, E(t_par) = 18792, ratio = 0.6933269476372924
+len =  29, E(t_ser) = 14724, E(t_par) = 20860, ratio = 0.7058485139022052
+len =  30, E(t_ser) = 16068, E(t_par) = 23551, ratio = 0.6822640227591185
+len =  31, E(t_ser) = 17432, E(t_par) = 25048, ratio = 0.6959437879271798
+len =  32, E(t_ser) = 18646, E(t_par) = 26906, ratio = 0.6930052776332416
+len =  33, E(t_ser) = 20587, E(t_par) = 30524, ratio = 0.6744528895295505
+len =  34, E(t_ser) = 22233, E(t_par) = 31433, ratio = 0.7073139693952216
+len =  35, E(t_ser) = 24051, E(t_par) = 35325, ratio = 0.6808492569002124
+len =  36, E(t_ser) = 25612, E(t_par) = 38045, ratio = 0.6732027861742673
+len =  37, E(t_ser) = 27221, E(t_par) = 40563, ratio = 0.6710795552597194
+len =  38, E(t_ser) = 28815, E(t_par) = 44106, ratio = 0.6533124744932662
+len =  39, E(t_ser) = 30844, E(t_par) = 46793, ratio = 0.6591584211313658
+len =  40, E(t_ser) = 31657, E(t_par) = 50853, ratio = 0.6225198120071579
+len =  41, E(t_ser) = 33240, E(t_par) = 52266, ratio = 0.6359774997130065
+len =  42, E(t_ser) = 35652, E(t_par) = 56770, ratio = 0.6280077505724855
+len =  43, E(t_ser) = 37570, E(t_par) = 59352, ratio = 0.633003100148268
+len =  44, E(t_ser) = 39516, E(t_par) = 62928, ratio = 0.6279557589626239
+len =  45, E(t_ser) = 40737, E(t_par) = 65567, ratio = 0.6213033995760062
+
