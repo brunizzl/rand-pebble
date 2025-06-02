@@ -36,7 +36,7 @@ fn find_stationary_distribution(len: usize) -> (Vec<isize>, usize) {
     let mut all_visits = vec![0isize; len * len];
     let mut nr_steps = 1;
     let mut curr_pos = len * (len / 2) + len / 2;
-    let mut lcg = rand_pebble::rand::Lcg::new(0);
+    let mut lcg = rand_pebble::rand_lcg::Lcg::new(0);
     loop {
         for _ in 0..nr_steps {
             curr_visits[curr_pos] += 1;
@@ -115,14 +115,13 @@ fn print_free_slots(free_slots: &[bool], len: usize, markers: &[usize]) {
     std::thread::sleep(PRINT_PAUSE_TIME);
 }
 
-fn simulate_pebbles_parallel(seed: u64, len: usize, start_vertex: usize) -> Vec<usize> {
+fn simulate_pebbles_parallel(mut rng: impl FnMut() -> usize, len: usize, start_vertex: usize) -> Vec<usize> {
     let grid = Graph::new_grid(len);
     if PRINT_PROGRESS {
         for _ in 0..len {
             println!();
         }
     }
-    let mut lcg = rand_pebble::rand::Lcg::new(seed);
     let mut active_pebbles = vec![start_vertex; grid.nr_vertices()];
     let mut new_active_pebbles = active_pebbles.clone();
     let mut walk_lengths = Vec::with_capacity(grid.nr_vertices());
@@ -141,11 +140,11 @@ fn simulate_pebbles_parallel(seed: u64, len: usize, start_vertex: usize) -> Vec<
                 walk_lengths.push(step);
                 settled_in_this_step.push(pebble);
             } else {
-                let new_pebble = if WALK_LAZILY && lcg.next_usize() % 16 == 0 {
+                let new_pebble = if WALK_LAZILY && rng() % 16 == 0 {
                     pebble
                 } else {
                     let neighs = &grid.edges[pebble];
-                    neighs[lcg.next_usize() % neighs.len()]
+                    neighs[rng() % neighs.len()]
                 };
                 new_active_pebbles.push(new_pebble);
             }
@@ -164,14 +163,13 @@ fn simulate_pebbles_parallel(seed: u64, len: usize, start_vertex: usize) -> Vec<
     walk_lengths
 }
 
-fn simulate_pebbles_serial(seed: u64, len: usize, start_vertex: usize) -> Vec<usize> {
+fn simulate_pebbles_serial(mut rng: impl FnMut() -> usize, len: usize, start_vertex: usize) -> Vec<usize> {
     let grid = Graph::new_grid(len);
     if PRINT_PROGRESS {
         for _ in 0..len {
             println!();
         }
     }
-    let mut lcg = rand_pebble::rand::Lcg::new(seed);
     let mut walk_lengths = Vec::with_capacity(grid.nr_vertices());
     let mut free_slots = vec![true; grid.nr_vertices()];
     let mut path = Vec::new();
@@ -180,9 +178,9 @@ fn simulate_pebbles_serial(seed: u64, len: usize, start_vertex: usize) -> Vec<us
         path.push(curr);
         let mut nr_steps = 0;
         while !free_slots[curr] {
-            curr = if !WALK_LAZILY || lcg.next_usize() % 16 == 0 {
+            curr = if !WALK_LAZILY || rng() % 16 == 0 {
                 let curr_neighs = &grid.edges[curr];
-                curr_neighs[lcg.next_usize() % curr_neighs.len()]
+                curr_neighs[rng() % curr_neighs.len()]
             } else {
                 curr
             };
@@ -203,14 +201,18 @@ fn simulate_pebbles_serial(seed: u64, len: usize, start_vertex: usize) -> Vec<us
 
 #[allow(dead_code)]
 fn test_serial_parallel_once() {
-    let len = 50;
+    let len = 30;
     let start = len * (len / 2) + (len / 2);
-    let seed = 2;
 
-    let parallel_walk_lengths = simulate_pebbles_parallel(seed, len, start);
+    let mut lcg = rand_pebble::rand_lcg::Lcg::new(0);
+
+    let rng = || lcg.next_usize();
+    let mut serial_walk_lengths = simulate_pebbles_serial(rng, len, start);
+
+    let rng = || lcg.next_usize();
+    let parallel_walk_lengths = simulate_pebbles_parallel(rng, len, start);
+    
     println!("{parallel_walk_lengths:?}");
-
-    let mut serial_walk_lengths = simulate_pebbles_serial(seed, len, start);
     println!("{serial_walk_lengths:?}");
     serial_walk_lengths.sort();
     println!("{serial_walk_lengths:?}");
@@ -222,38 +224,50 @@ fn find_max_expected_serial_parallel() {
     let mut expectation_parallel = Vec::new();
 
     let mut len_f = 10.0;
+    
     while len_f < 200.0 {
+        use rayon::prelude::*;
+        use rand::prelude::*;
         let len = len_f as usize;
         len_f *= 1.1;
 
-        let mut serial_sum = 0;
-        let mut parallel_sum = 0;
-        const EXPERIMENTS_PER_LEN: u64 = 5000;
-        for seed in 1337..(1337 + EXPERIMENTS_PER_LEN) {
-            let mut serial = simulate_pebbles_serial(seed * 10_000_000, len, 0);
+        const EXPERIMENTS_PER_LEN: usize = 10_000;
+        let range = [(); EXPERIMENTS_PER_LEN];
+
+        let serial_sum: usize = range.par_iter().map(|_| {
+            let mut rng = rand::rng();
+            let rng_f = || rng.random_range(1..10000);
+            let mut serial = simulate_pebbles_serial(rng_f, len, 0);
             serial.sort();
-            serial_sum += *serial.last().unwrap();
-            let parallel = simulate_pebbles_parallel(seed, len, 0);
-            parallel_sum += *parallel.last().unwrap();
-        }
+            *serial.last().unwrap()
+        }).sum();
+
+        
+        let parallel_sum: usize = range.par_iter().map(|_| {
+            let mut rng = rand::rng();
+            let rng_f = || rng.random_range(1..10000);
+            let parallel = simulate_pebbles_parallel(rng_f, len, 0);
+            *parallel.last().unwrap()
+        }).sum();
+
         let exp_serial = serial_sum as f64 / EXPERIMENTS_PER_LEN as f64;
         let exp_parallel = parallel_sum as f64 / EXPERIMENTS_PER_LEN as f64;
         expectation_serial.push((len * len, exp_serial));
         expectation_parallel.push((len * len, exp_parallel));
         let ratio = serial_sum as f64 / parallel_sum as f64;
         println!(
-            "len = {len:>3}, E(t_ser) = {exp_serial:>10.2}, E(t_par) = {exp_parallel:>10.2}, ratio = {ratio}"
+            "len = {len:>3}, t_ser = {exp_serial:>10.2}, t_par = {exp_parallel:>10.2}, ratio = {ratio}"
         );
     }
 }
 
-const PRINT_PROGRESS: bool = false;
+const PRINT_PROGRESS: bool = true;
 const WALK_LAZILY: bool = false;
 const PRINT_EVERY_FRAME: bool = true;
-const PRINT_PAUSE_TIME: std::time::Duration = std::time::Duration::from_millis(20);
+const PRINT_PAUSE_TIME: std::time::Duration = std::time::Duration::from_millis(100);
 
 fn main() {
     //print_static_distribution();
-    find_max_expected_serial_parallel();
-    //test_serial_parallel_once();
+    //find_max_expected_serial_parallel();
+    test_serial_parallel_once();
 }
