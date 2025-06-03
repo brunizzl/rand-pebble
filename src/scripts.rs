@@ -99,7 +99,7 @@ fn print_stationary_distribution() {
     }
 }
 
-fn print_free_slots(free_slots: &[bool], len: usize, markers: &[usize]) {
+fn print_free_slots<'a>(free_slots: &[bool], len: usize, markers: impl Iterator<Item = &'a usize>) {
     use crossterm::{ExecutableCommand, cursor::MoveUp};
     std::io::stdout().execute(MoveUp(len as u16)).ok();
 
@@ -176,14 +176,23 @@ fn simulate_walk_lengths_parallel(graph: &Graph, start_vertex: usize) -> Vec<usi
         {
             nr_free_when_last_printed = active_pebbles.len();
 
-            print_free_slots(&free_slots, len, &active_pebbles);
+            print_free_slots(&free_slots, len, active_pebbles.iter());
         }
     }
 
     walk_lengths
 }
 
-fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<usize>> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Step {
+    /// (original) index of pebble.
+    /// this is only metadata.
+    pebble: usize,
+    /// vertex index
+    pos: usize,
+}
+
+fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>> {
     let mut rng = rand::rng();
     let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
     if PRINT_PROGRESS {
@@ -193,7 +202,14 @@ fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<usize>
     }
     let mut nr_active_pebbles = graph.nr_vertices();
     let mut active_pebbles = vec![true; graph.nr_vertices()];
-    let mut walks = vec![vec![start_vertex]; graph.nr_vertices()];
+    let mut walks = (0..graph.nr_vertices())
+        .map(|pebble| {
+            vec![Step {
+                pebble,
+                pos: start_vertex,
+            }]
+        })
+        .collect_vec();
     let mut free_slots = vec![true; graph.nr_vertices()];
 
     let mut nr_free_when_last_printed = nr_active_pebbles + 1;
@@ -202,24 +218,31 @@ fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<usize>
         if nr_active_pebbles == 0 {
             break;
         }
-        for (active, walk) in izip!(&mut active_pebbles, &mut walks) {
+        for (i, active, walk) in izip!(0.., &mut active_pebbles, &mut walks) {
             if !*active {
                 continue;
             }
-            let pebble = *walk.last().unwrap();
-            curr_pebble_positions.push(pebble);
-            if free_slots[pebble] {
-                free_slots[pebble] = false;
+            let Step {
+                pebble,
+                pos: pebble_pos,
+            } = *walk.last().unwrap();
+            debug_assert_eq!(pebble, i);
+            curr_pebble_positions.push(pebble_pos);
+            if free_slots[pebble_pos] {
+                free_slots[pebble_pos] = false;
                 *active = false;
                 nr_active_pebbles -= 1;
             } else {
-                let new_pebble = if WALK_LAZILY && rng.random_range(0..16) == 0 {
-                    pebble
+                let new_pos = if WALK_LAZILY && rng.random_range(0..16) == 0 {
+                    pebble_pos
                 } else {
-                    let neighs = &graph.edges[pebble];
+                    let neighs = &graph.edges[pebble_pos];
                     neighs[rng.random_range(0..neighs.len())]
                 };
-                walk.push(new_pebble);
+                walk.push(Step {
+                    pebble,
+                    pos: new_pos,
+                });
             }
         }
 
@@ -228,7 +251,7 @@ fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<usize>
         {
             nr_free_when_last_printed = active_pebbles.len();
 
-            print_free_slots(&free_slots, len, &curr_pebble_positions);
+            print_free_slots(&free_slots, len, curr_pebble_positions.iter());
         }
         curr_pebble_positions.clear();
     }
@@ -265,7 +288,7 @@ fn simulate_walk_lengths_serial(graph: &Graph, start_vertex: usize) -> Vec<usize
         walk_lengths.push(nr_steps);
 
         if PRINT_PROGRESS {
-            print_free_slots(&free_slots, len, &path);
+            print_free_slots(&free_slots, len, path.iter());
         }
         path.clear();
     }
@@ -273,7 +296,7 @@ fn simulate_walk_lengths_serial(graph: &Graph, start_vertex: usize) -> Vec<usize
     walk_lengths
 }
 
-fn simulate_walks_serial(graph: &Graph, start_vertex: usize) -> Vec<Vec<usize>> {
+fn simulate_walks_serial(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>> {
     let mut rng = rand::rng();
     let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
     if PRINT_PROGRESS {
@@ -283,23 +306,23 @@ fn simulate_walks_serial(graph: &Graph, start_vertex: usize) -> Vec<Vec<usize>> 
     }
     let mut walks = Vec::with_capacity(graph.nr_vertices());
     let mut free_slots = vec![true; graph.nr_vertices()];
-    for _ in 0..graph.nr_vertices() {
+    for pebble in 0..graph.nr_vertices() {
         let mut path = Vec::new();
-        let mut curr = start_vertex;
-        path.push(curr);
-        while !free_slots[curr] {
-            curr = if !WALK_LAZILY || rng.random_range(0..16) == 0 {
-                let curr_neighs = &graph.edges[curr];
+        let mut pos = start_vertex;
+        path.push(Step { pebble, pos });
+        while !free_slots[pos] {
+            pos = if !WALK_LAZILY || rng.random_range(0..16) == 0 {
+                let curr_neighs = &graph.edges[pos];
                 curr_neighs[rng.random_range(0..curr_neighs.len())]
             } else {
-                curr
+                pos
             };
-            path.push(curr);
+            path.push(Step { pebble, pos });
         }
-        free_slots[curr] = false;
+        free_slots[pos] = false;
 
         if PRINT_PROGRESS {
-            print_free_slots(&free_slots, len, &path);
+            print_free_slots(&free_slots, len, path.iter().map(|s| &s.pos));
         }
         walks.push(path);
     }
@@ -322,17 +345,51 @@ fn test_walk_lengths_once() {
     println!("parallel walk lengths: {parallel_walk_lengths:?}");
 }
 
-fn print_walks(walks: &[Vec<usize>]) {
+#[allow(dead_code)]
+fn print_walks(walks: &[Vec<Step>]) {
     if !PRINT_WALKS {
         return;
     }
     for (i, walk) in izip!(0.., walks) {
         print!("{i:>4} |");
-        for step in walk {
-            print!(" {step:>3}");
+        for Step { pebble: _, pos } in walk {
+            print!(" {pos:>3}");
         }
         println!();
     }
+}
+
+#[allow(dead_code)]
+fn plot_walks(plot_name: &str, walks: &[Vec<Step>]) -> Result<(), Box<dyn std::error::Error>> {
+    use plotters::prelude::*;
+    if !PRINT_WALKS {
+        return Ok(());
+    }
+    let nr_vertices = walks.len();
+    let longest = walks.iter().map(|w| w.len()).max().unwrap();
+    let file_name = format!("{plot_name}.png");
+    let root = BitMapBackend::new(&file_name, (1920, 1080)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(plot_name, ("sans-serif", 30).into_font())
+        .margin(10)
+        .x_label_area_size(30)
+        .build_cartesian_2d(0..longest, 0..nr_vertices)?;
+    chart.configure_mesh().draw()?;
+
+    for (y, walk) in izip!(1.., walks) {
+        let draw_y = nr_vertices - y;
+        chart.draw_series(izip!(0.., walk).map(|(x, Step { pebble, pos: _ })| {
+            let pebble_val = *pebble as f64 / nr_vertices as f64;
+            //let color = plotters::style::HSLColor(0.4, 1.0, pebble_val * 0.7 + 0.15);
+            let color = plotters::style::HSLColor(pebble_val, 1.0, 0.5);
+            Rectangle::new([(x, draw_y), (x + 1, draw_y + 1)], color.filled())
+        }))?;
+    }
+
+    root.present()?;
+
+    Ok(())
 }
 
 #[allow(dead_code)]
@@ -342,32 +399,34 @@ fn test_walks_once() {
     let graph = Graph::new_grid(len);
 
     let serial_walks = simulate_walks_serial(&graph, start);
-    print_walks(&serial_walks);
+    plot_walks("serial", &serial_walks).ok();
+    //print_walks(&serial_walks);
 
     let parallel_walks = simulate_walks_parallel(&graph, start);
-    print_walks(&parallel_walks);
+    plot_walks("parallel", &parallel_walks).ok();
+    //print_walks(&parallel_walks);
 }
 
-fn transform_walks_serial_to_parallel(graph: &Graph, walks: &mut [Vec<usize>]) {
+fn transform_walks_serial_to_parallel(graph: &Graph, walks: &mut [Vec<Step>]) {
     let mut nr_vertices_visited = 0;
     let mut vertices_visited = vec![false; graph.nr_vertices()];
     let mut t = 0;
     while nr_vertices_visited < graph.nr_vertices() {
         for i in 0..graph.nr_vertices() {
             if walks[i].len() > t {
-                let pebble = walks[i][t];
-                if !vertices_visited[pebble] {
-                    vertices_visited[pebble] = true;
+                let Step { pebble: _, pos } = walks[i][t];
+                if !vertices_visited[pos] {
+                    vertices_visited[pos] = true;
                     nr_vertices_visited += 1;
                     let paste_pos = walks
                         .iter()
-                        .position(|w| w.last() == Some(&pebble))
+                        .position(|w| w.last().is_some_and(|s| s.pos == pos))
                         .unwrap();
                     if paste_pos != i {
                         let mut walk_i = std::mem::take(&mut walks[i]);
                         let to_copy = &walk_i[(t + 1)..];
                         walks[paste_pos].extend_from_slice(to_copy);
-                        walk_i.resize(t + 1, 0);
+                        walk_i.truncate(t + 1);
                         walks[i] = walk_i;
                     }
                 }
@@ -377,24 +436,23 @@ fn transform_walks_serial_to_parallel(graph: &Graph, walks: &mut [Vec<usize>]) {
     }
 }
 
-#[allow(dead_code)]
-fn transform_walks_parallel_to_serial(graph: &Graph, walks: &mut [Vec<usize>]) {
+fn transform_walks_parallel_to_serial(graph: &Graph, walks: &mut [Vec<Step>]) {
     let mut vertices_visited = vec![false; graph.nr_vertices()];
     for i in 0..graph.nr_vertices() {
         let mut t = 0;
         while t < walks[i].len() {
-            let pebble = walks[i][t];
-            if !vertices_visited[pebble] {
-                vertices_visited[pebble] = true;
+            let Step { pebble: _, pos } = walks[i][t];
+            if !vertices_visited[pos] {
+                vertices_visited[pos] = true;
                 let paste_pos = walks
                     .iter()
-                    .position(|w| w.last() == Some(&pebble))
+                    .position(|w| w.last().is_some_and(|s| s.pos == pos))
                     .unwrap();
                 if paste_pos != i {
                     let mut walk_i = std::mem::take(&mut walks[i]);
                     let to_copy = &walk_i[(t + 1)..];
                     walks[paste_pos].extend_from_slice(to_copy);
-                    walk_i.resize(t + 1, 0);
+                    walk_i.truncate(t + 1);
                     walks[i] = walk_i;
                 }
             }
@@ -433,25 +491,22 @@ mod test {
 fn test_transformed_walk_lengths_serial() {
     println!("compute serial, then transform to parallel");
     let len = FIXED_LEN;
-    let start = 0;//len * (len / 2) + (len / 2);
+    let start = 0; //len * (len / 2) + (len / 2);
     let graph = Graph::new_torus_grid(len);
-    let mut ratio_sum = 0.0;
-    const NR_SAMPLES: usize = 1000;
-    for _ in 0..NR_SAMPLES {
-        let mut walks = simulate_walks_serial(&graph, start);
-        print_walks(&walks);
-        let max_serial = walks.iter().map(|w| w.len()).max().unwrap_or(0);
-        println!("max serial len = {max_serial}");
 
-        transform_walks_serial_to_parallel(&graph, &mut walks);
-        print_walks(&walks);
-        let max_parallel = walks.iter().map(|w| w.len()).max().unwrap_or(0);
-        println!("max parallel len = {max_parallel}");
-        let ratio = max_serial as f64 / max_parallel as f64;
-        println!("ratio: {ratio}");
-        ratio_sum += ratio;
-    }
-    println!("=> avg ratio: {}", ratio_sum / NR_SAMPLES as f64);
+    let mut walks = simulate_walks_serial(&graph, start);
+    //print_walks(&walks);
+    plot_walks("serial", &walks).ok();
+    let max_serial = walks.iter().map(|w| w.len()).max().unwrap_or(0);
+    println!("max serial len = {max_serial}");
+
+    transform_walks_serial_to_parallel(&graph, &mut walks);
+    //print_walks(&walks);
+    plot_walks("parallel", &walks).ok();
+    let max_parallel = walks.iter().map(|w| w.len()).max().unwrap_or(0);
+    println!("max parallel len = {max_parallel}");
+
+    println!("ratio: {}", max_serial as f64 / max_parallel as f64);
 }
 
 #[allow(dead_code)]
@@ -462,14 +517,17 @@ fn test_transformed_walk_lengths_parallel() {
     let graph = Graph::new_grid(len);
 
     let mut walks = simulate_walks_parallel(&graph, start);
-    print_walks(&walks);
+    //print_walks(&walks);
+    plot_walks("parallel", &walks).ok();
     let max_parallel = walks.iter().map(|w| w.len()).max().unwrap_or(0);
     println!("max parallel len = {max_parallel}");
 
     transform_walks_parallel_to_serial(&graph, &mut walks);
-    print_walks(&walks);
+    //print_walks(&walks);
+    plot_walks("serial", &walks).ok();
     let max_serial = walks.iter().map(|w| w.len()).max().unwrap_or(0);
     println!("max serial len = {max_serial}");
+
     println!("ratio: {}", max_serial as f64 / max_parallel as f64);
 }
 
@@ -517,8 +575,8 @@ fn find_max_expected_serial_parallel() {
     }
 }
 
-const FIXED_LEN: usize = 100;
-const PRINT_WALKS: bool = false;
+const FIXED_LEN: usize = 10;
+const PRINT_WALKS: bool = true;
 const PRINT_PROGRESS: bool = false;
 const WALK_LAZILY: bool = false;
 const PRINT_EVERY_FRAME: bool = true;
@@ -529,6 +587,6 @@ pub fn scrips_main() {
     //find_max_expected_serial_parallel();
     //test_walk_lengths_once();
     //test_walks_once();
-    test_transformed_walk_lengths_serial();
-    //test_transformed_walk_lengths_parallel();
+    //test_transformed_walk_lengths_serial();
+    test_transformed_walk_lengths_parallel();
 }
