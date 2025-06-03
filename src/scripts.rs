@@ -670,8 +670,14 @@ fn compare_expected_transformed_serial_parallel() {
                 let max_serial = max_walk_len(&walks);
                 let nr_cuts = walks
                     .iter()
-                    .filter(|w| w.iter().any(|s| s.pebble == slowest_pebble))
-                    .count()
+                    .map(|w| {
+                        w.iter()
+                            .map(|s| s.pebble)
+                            .dedup()
+                            .filter(|&p| p == slowest_pebble)
+                            .count()
+                    })
+                    .sum::<usize>()
                     - 1;
                 (max_parallel, max_serial, nr_cuts)
             })
