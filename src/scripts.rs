@@ -382,12 +382,69 @@ fn plot_walks(plot_name: &str, walks: &[Vec<Step>]) -> Result<(), Box<dyn std::e
         chart.draw_series(izip!(0.., walk).map(|(x, Step { pebble, pos: _ })| {
             let pebble_val = *pebble as f64 / nr_vertices as f64;
             //let color = plotters::style::HSLColor(0.4, 1.0, pebble_val * 0.7 + 0.15);
-            let color = plotters::style::HSLColor(pebble_val, 1.0, 0.5);
+            let color = plotters::style::HSLColor(pebble_val * 0.8 + 0.1, 1.0, 0.5);
             Rectangle::new([(x, draw_y), (x + 1, draw_y + 1)], color.filled())
         }))?;
     }
 
     root.present()?;
+
+    Ok(())
+}
+
+/// returns many steps each pebble took and which pebble took most.
+/// this always considers the original pebble index, thus may be different from
+/// `walks.iter().map(Vec::len)`
+fn pebble_frequencies(walks: &[Vec<Step>]) -> (Vec<usize>, usize) {
+    let mut frequencies = vec![0; walks.len()];
+    for walk in walks {
+        for Step { pebble, pos: _ } in walk {
+            frequencies[*pebble] += 1;
+        }
+    }
+    let max_pebble = {
+        let mut best_i = 0;
+        let mut best_val = 0;
+        for (i, &val) in izip!(0.., &frequencies) {
+            if val > best_val {
+                best_i = i;
+                best_val = val;
+            }
+        }
+        best_i
+    };
+    (frequencies, max_pebble)
+}
+
+fn max_walk_len(walks: &[Vec<Step>]) -> usize {
+    walks.iter().map(Vec::len).max().unwrap_or(0)
+}
+
+fn plot_walks_variations(
+    plot_name: &str,
+    walks: &[Vec<Step>],
+) -> Result<(), Box<dyn std::error::Error>> {
+    plot_walks(plot_name, walks)?;
+    let mut walks_clone = Vec::from(walks);
+    walks_clone.sort_by_key(Vec::len);
+    let sorted_name = format!("{plot_name}-sorted");
+    plot_walks(&sorted_name, &walks_clone)?;
+
+    let nr_vertices = walks.len();
+    let (_, max_pebble) = pebble_frequencies(walks);
+    for walk in &mut walks_clone {
+        for Step { pebble, pos: _ } in walk {
+            // abuse of pebble meaning: we print different pebbles as different colors,
+            // if only the max_pebble should have a special color, all others are the same.
+            *pebble = if *pebble == max_pebble {
+                nr_vertices
+            } else {
+                nr_vertices / 10
+            };
+        }
+    }
+    let max_name = format!("{plot_name}-sorted-max");
+    plot_walks(&max_name, &walks_clone)?;
 
     Ok(())
 }
@@ -496,14 +553,14 @@ fn test_transformed_walk_lengths_serial() {
 
     let mut walks = simulate_walks_serial(&graph, start);
     //print_walks(&walks);
-    plot_walks("serial", &walks).ok();
-    let max_serial = walks.iter().map(|w| w.len()).max().unwrap_or(0);
+    plot_walks_variations("serial", &walks).ok();
+    let max_serial = max_walk_len(&walks);
     println!("max serial len = {max_serial}");
 
     transform_walks_serial_to_parallel(&graph, &mut walks);
     //print_walks(&walks);
-    plot_walks("parallel", &walks).ok();
-    let max_parallel = walks.iter().map(|w| w.len()).max().unwrap_or(0);
+    plot_walks_variations("parallel", &walks).ok();
+    let max_parallel = max_walk_len(&walks);
     println!("max parallel len = {max_parallel}");
 
     println!("ratio: {}", max_serial as f64 / max_parallel as f64);
@@ -518,14 +575,14 @@ fn test_transformed_walk_lengths_parallel() {
 
     let mut walks = simulate_walks_parallel(&graph, start);
     //print_walks(&walks);
-    plot_walks("parallel", &walks).ok();
-    let max_parallel = walks.iter().map(|w| w.len()).max().unwrap_or(0);
+    plot_walks_variations("parallel", &walks).ok();
+    let max_parallel = max_walk_len(&walks);
     println!("max parallel len = {max_parallel}");
 
     transform_walks_parallel_to_serial(&graph, &mut walks);
     //print_walks(&walks);
-    plot_walks("serial", &walks).ok();
-    let max_serial = walks.iter().map(|w| w.len()).max().unwrap_or(0);
+    plot_walks_variations("serial", &walks).ok();
+    let max_serial = max_walk_len(&walks);
     println!("max serial len = {max_serial}");
 
     println!("ratio: {}", max_serial as f64 / max_parallel as f64);
@@ -533,9 +590,6 @@ fn test_transformed_walk_lengths_parallel() {
 
 #[allow(dead_code)]
 fn find_max_expected_serial_parallel() {
-    let mut expectation_serial = Vec::new();
-    let mut expectation_parallel = Vec::new();
-
     let mut len_f = 10.0;
 
     while len_f < 200.0 {
@@ -566,8 +620,6 @@ fn find_max_expected_serial_parallel() {
 
         let exp_serial = serial_sum as f64 / EXPERIMENTS_PER_LEN as f64;
         let exp_parallel = parallel_sum as f64 / EXPERIMENTS_PER_LEN as f64;
-        expectation_serial.push((len * len, exp_serial));
-        expectation_parallel.push((len * len, exp_parallel));
         let ratio = serial_sum as f64 / parallel_sum as f64;
         println!(
             "len = {len:>3}, t_ser = {exp_serial:>10.2}, t_par = {exp_parallel:>10.2}, ratio = {ratio}"
@@ -575,7 +627,49 @@ fn find_max_expected_serial_parallel() {
     }
 }
 
-const FIXED_LEN: usize = 10;
+#[allow(dead_code)]
+fn compare_expected_transformed_serial_parallel() {
+    let mut len_f = 10.0;
+
+    while len_f < 200.0 {
+        use rayon::prelude::*;
+        let len = len_f as usize;
+        len_f *= 1.1;
+
+        const EXPERIMENTS_PER_LEN: usize = 10_000;
+        let range = [(); EXPERIMENTS_PER_LEN];
+        let graph = Graph::new_grid(len);
+
+        let res = range
+            .par_iter()
+            .map(|_| {
+                let mut walks = simulate_walks_parallel(&graph, 0);
+                let max_parallel = max_walk_len(&walks);
+                let slowest_pebble = walks.iter().map(Vec::len).position_max().unwrap();
+                transform_walks_parallel_to_serial(&graph, &mut walks);
+                let max_serial = max_walk_len(&walks);
+                let nr_cuts = walks
+                    .iter()
+                    .filter(|w| w.iter().any(|s| s.pebble == slowest_pebble))
+                    .count() - 1;
+                (max_parallel, max_serial, nr_cuts)
+            })
+            .reduce(|| (0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
+        let avg_max_parallel = res.0 as f64 / EXPERIMENTS_PER_LEN as f64;
+        let avg_max_serial = res.1 as f64 / EXPERIMENTS_PER_LEN as f64;
+        let ratio = avg_max_serial / avg_max_parallel;
+        let avg_nr_cuts = res.2 as f64 / EXPERIMENTS_PER_LEN as f64;
+        println!(
+            "len = {len:>3}, \
+            t_par = {avg_max_parallel:>10.2}, \
+            (transformed) t_ser = {avg_max_serial:>10.2}, \
+            cuts = {avg_nr_cuts:>3.2}, \
+            ratio = {ratio}"
+        );
+    }
+}
+
+const FIXED_LEN: usize = 15;
 const PRINT_WALKS: bool = true;
 const PRINT_PROGRESS: bool = false;
 const WALK_LAZILY: bool = false;
@@ -588,5 +682,6 @@ pub fn scrips_main() {
     //test_walk_lengths_once();
     //test_walks_once();
     //test_transformed_walk_lengths_serial();
-    test_transformed_walk_lengths_parallel();
+    //test_transformed_walk_lengths_parallel();
+    compare_expected_transformed_serial_parallel();
 }
