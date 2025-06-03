@@ -3,7 +3,7 @@ use rand::Rng;
 
 use crate::bool_csr::BoolCSR;
 
-struct Graph {
+pub struct Graph {
     edges: BoolCSR,
 }
 
@@ -49,17 +49,27 @@ impl Graph {
     }
 }
 
-fn find_stationary_distribution(len: usize) -> (Vec<isize>, usize) {
-    let grid = Graph::new_grid(len);
-    let mut curr_visits = vec![0isize; len * len];
-    let mut all_visits = vec![0isize; len * len];
+/// experiment to determine stationary distribution:
+/// walk a random walk and keep track of how often each vertex was visited.
+/// thus, not exactly the stationary distribution, but this log is returned.
+/// because the number of steps is not predetermined, the number of walked steps is retuned alongside the graph:
+/// ```
+/// use rand_pebble::scripts::*;
+/// let g = Graph::new_grid(4);
+/// let (steps_per, steps_total) = find_stationary_distribution(&g, 0.1);
+/// assert_eq!(steps_per.len(), g.nr_vertices());
+/// assert_eq!(steps_per.iter().sum::<isize>() as usize, steps_total);
+/// ```
+pub fn find_stationary_distribution(graph: &Graph, eps: f64) -> (Vec<isize>, usize) {
+    let mut curr_visits = vec![0isize; graph.nr_vertices()];
+    let mut all_visits = vec![0isize; graph.nr_vertices()];
     let mut nr_steps = 1;
-    let mut curr_pos = len * (len / 2) + len / 2;
+    let mut curr_pos = 0;
     let mut lcg = crate::rand_lcg::Lcg::new(0);
     loop {
         for _ in 0..nr_steps {
             curr_visits[curr_pos] += 1;
-            let curr_neighs = &grid.edges[curr_pos];
+            let curr_neighs = &graph.edges[curr_pos];
             curr_pos = curr_neighs[(lcg.next() as usize) % curr_neighs.len()];
         }
         let cum_relative_diff = izip!(&curr_visits, &all_visits)
@@ -67,7 +77,7 @@ fn find_stationary_distribution(len: usize) -> (Vec<isize>, usize) {
             .sum::<f64>();
         let avg_relative_diff = cum_relative_diff / (curr_visits.len() as f64);
         println!("steps: {nr_steps:>20} diff: {avg_relative_diff}");
-        if avg_relative_diff < 0.0002 {
+        if avg_relative_diff < eps {
             break;
         }
         for (cv, av) in izip!(&mut curr_visits, &mut all_visits) {
@@ -83,10 +93,13 @@ fn find_stationary_distribution(len: usize) -> (Vec<isize>, usize) {
     (all_visits, nr_steps * 2 - 1)
 }
 
+/// prints for each vertex how often it is visited, relative to the average.
+/// => above average iff shown value is greater than 1.0
 #[allow(dead_code)]
 fn print_stationary_distribution() {
     let len = FIXED_LEN;
-    let (visits, nr_steps) = find_stationary_distribution(len);
+    let graph = Graph::new_grid(len);
+    let (visits, nr_steps) = find_stationary_distribution(&graph, 0.0002);
     for y in 0..len {
         for x in 0..len {
             let val = visits[y * len + x];
@@ -99,6 +112,9 @@ fn print_stationary_distribution() {
     }
 }
 
+/// print progress in process.
+/// free vertices are shown as empty space, filled vertices as `'.'`
+/// and vertices with markers show how many markers are held (if > 9 an `'X'` is shown.)
 fn print_free_slots<'a>(free_slots: &[bool], len: usize, markers: impl Iterator<Item = &'a usize>) {
     use crossterm::{ExecutableCommand, cursor::MoveUp};
     std::io::stdout().execute(MoveUp(len as u16)).ok();
@@ -183,10 +199,11 @@ fn simulate_walk_lengths_parallel(graph: &Graph, start_vertex: usize) -> Vec<usi
     walk_lengths
 }
 
+/// a random walk is a vec of `Step`'s
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Step {
     /// (original) index of pebble.
-    /// this is only metadata.
+    /// this is mostly metadata.
     pebble: usize,
     /// vertex index
     pos: usize,
@@ -345,6 +362,7 @@ fn test_walk_lengths_once() {
     println!("parallel walk lengths: {parallel_walk_lengths:?}");
 }
 
+/// mostly made obsolete by [`plot_walks`], but will actually show which vertices where taken.
 #[allow(dead_code)]
 fn print_walks(walks: &[Vec<Step>]) {
     if !PRINT_WALKS {
@@ -464,6 +482,7 @@ fn test_walks_once() {
     //print_walks(&parallel_walks);
 }
 
+/// algorithm from paper
 fn transform_walks_serial_to_parallel(graph: &Graph, walks: &mut [Vec<Step>]) {
     let mut nr_vertices_visited = 0;
     let mut vertices_visited = vec![false; graph.nr_vertices()];
@@ -493,6 +512,7 @@ fn transform_walks_serial_to_parallel(graph: &Graph, walks: &mut [Vec<Step>]) {
     }
 }
 
+/// algorithm from paper
 fn transform_walks_parallel_to_serial(graph: &Graph, walks: &mut [Vec<Step>]) {
     let mut vertices_visited = vec![false; graph.nr_vertices()];
     for i in 0..graph.nr_vertices() {
@@ -651,7 +671,8 @@ fn compare_expected_transformed_serial_parallel() {
                 let nr_cuts = walks
                     .iter()
                     .filter(|w| w.iter().any(|s| s.pebble == slowest_pebble))
-                    .count() - 1;
+                    .count()
+                    - 1;
                 (max_parallel, max_serial, nr_cuts)
             })
             .reduce(|| (0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
