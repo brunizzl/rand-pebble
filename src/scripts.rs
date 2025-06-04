@@ -712,7 +712,7 @@ fn compare_expected_transformed_serial_parallel() {
 /// which family of graphs should be examined
 fn build_graph(len: usize) -> Graph {
     Graph::new_grid(len)
-    //build_graph(len)
+    //Graph::new_torus_grid(len)
 }
 /// if some function assembles only a single graph, this is the used len.
 const FIXED_LEN: usize = 15;
