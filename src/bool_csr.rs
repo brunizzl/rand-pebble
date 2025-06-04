@@ -30,7 +30,7 @@ impl BoolCSR {
     }
 
     pub fn add_entry_in_last_row(&mut self, col: usize) {
-        assert!(self.nr_rows() > 0);
+        debug_assert!(self.nr_rows() > 0);
         *self.row_offsets.last_mut().unwrap() += 1;
         self.col_indices.push(col);
     }
@@ -50,7 +50,7 @@ impl BoolCSR {
     }
 
     pub fn last_row(&self) -> &[usize] {
-        assert!(self.nr_rows() > 0);
+        debug_assert!(self.nr_rows() > 0);
         let len = self.row_offsets.len();
         let start = self.row_offsets[len - 2];
         let end = self.row_offsets[len - 1];
@@ -62,6 +62,12 @@ impl BoolCSR {
         let start = self.row_offsets[row];
         let end = self.row_offsets[row + 1];
         &self.col_indices[start..end]
+    }
+}
+
+impl Default for BoolCSR {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

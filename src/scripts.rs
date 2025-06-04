@@ -70,7 +70,7 @@ pub fn find_stationary_distribution(graph: &Graph, eps: f64) -> (Vec<isize>, usi
         for _ in 0..nr_steps {
             curr_visits[curr_pos] += 1;
             let curr_neighs = &graph.edges[curr_pos];
-            curr_pos = curr_neighs[(lcg.next() as usize) % curr_neighs.len()];
+            curr_pos = curr_neighs[(lcg.gen_u32() as usize) % curr_neighs.len()];
         }
         let cum_relative_diff = izip!(&curr_visits, &all_visits)
             .map(|(&a, &b)| ((a - b).abs() as f64) / (isize::max(a, b) as f64))
@@ -98,8 +98,8 @@ pub fn find_stationary_distribution(graph: &Graph, eps: f64) -> (Vec<isize>, usi
 #[allow(dead_code)]
 fn print_stationary_distribution() {
     let len = FIXED_LEN;
-    let graph = Graph::new_grid(len);
-    let (visits, nr_steps) = find_stationary_distribution(&graph, 0.0002);
+    let graph = build_graph(len);
+    let (visits, nr_steps) = find_stationary_distribution(&graph, 0.002);
     for y in 0..len {
         for x in 0..len {
             let val = visits[y * len + x];
@@ -150,6 +150,7 @@ fn print_free_slots<'a>(free_slots: &[bool], len: usize, markers: impl Iterator<
     std::thread::sleep(PRINT_PAUSE_TIME);
 }
 
+/// simulate parallel IDLA, returned are the lengths of each walk.
 fn simulate_walk_lengths_parallel(graph: &Graph, start_vertex: usize) -> Vec<usize> {
     let mut rng = rand::rng();
     let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
@@ -209,6 +210,7 @@ struct Step {
     pos: usize,
 }
 
+/// simulate parallel IDLA, returned are the walks of all pebbles.
 fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>> {
     let mut rng = rand::rng();
     let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
@@ -231,10 +233,7 @@ fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>>
 
     let mut nr_free_when_last_printed = nr_active_pebbles + 1;
     let mut curr_pebble_positions = Vec::new();
-    for _ in 0.. {
-        if nr_active_pebbles == 0 {
-            break;
-        }
+    while nr_active_pebbles > 0 {
         for (i, active, walk) in izip!(0.., &mut active_pebbles, &mut walks) {
             if !*active {
                 continue;
@@ -263,10 +262,8 @@ fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>>
             }
         }
 
-        if PRINT_PROGRESS
-            && (PRINT_EVERY_FRAME || nr_free_when_last_printed != active_pebbles.len())
-        {
-            nr_free_when_last_printed = active_pebbles.len();
+        if PRINT_PROGRESS && (PRINT_EVERY_FRAME || nr_free_when_last_printed != nr_active_pebbles) {
+            nr_free_when_last_printed = nr_active_pebbles;
 
             print_free_slots(&free_slots, len, curr_pebble_positions.iter());
         }
@@ -276,6 +273,7 @@ fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>>
     walks
 }
 
+/// simulate sequential IDLA, returned are the lengths of each walk.
 fn simulate_walk_lengths_serial(graph: &Graph, start_vertex: usize) -> Vec<usize> {
     let mut rng = rand::rng();
     let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
@@ -313,6 +311,7 @@ fn simulate_walk_lengths_serial(graph: &Graph, start_vertex: usize) -> Vec<usize
     walk_lengths
 }
 
+/// simulate sequential IDLA, returned are the walks of each pebble.
 fn simulate_walks_serial(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>> {
     let mut rng = rand::rng();
     let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
@@ -351,7 +350,7 @@ fn simulate_walks_serial(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>> {
 fn test_walk_lengths_once() {
     let len = FIXED_LEN;
     let start = len * (len / 2) + (len / 2);
-    let graph = Graph::new_grid(len);
+    let graph = build_graph(len);
 
     let mut serial_walk_lengths = simulate_walk_lengths_serial(&graph, start);
     println!("serial walk lengths (unsorted): {serial_walk_lengths:?}");
@@ -384,7 +383,8 @@ fn plot_walks(plot_name: &str, walks: &[Vec<Step>]) -> Result<(), Box<dyn std::e
         return Ok(());
     }
     let nr_vertices = walks.len();
-    let longest = walks.iter().map(|w| w.len()).max().unwrap();
+    let longest = max_walk_len(&walks);
+
     let file_name = format!("{plot_name}.png");
     let root = BitMapBackend::new(&file_name, (1920, 1080)).into_drawing_area();
     root.fill(&WHITE)?;
@@ -410,7 +410,7 @@ fn plot_walks(plot_name: &str, walks: &[Vec<Step>]) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-/// returns many steps each pebble took and which pebble took most.
+/// returns how many steps each pebble took and which pebble took most.
 /// this always considers the original pebble index, thus may be different from
 /// `walks.iter().map(Vec::len)`
 fn pebble_frequencies(walks: &[Vec<Step>]) -> (Vec<usize>, usize) {
@@ -471,14 +471,16 @@ fn plot_walks_variations(
 fn test_walks_once() {
     let len = FIXED_LEN;
     let start = 0; //len * (len / 2) + (len / 2);
-    let graph = Graph::new_grid(len);
+    let graph = build_graph(len);
 
+    println!("simulate serial...");
     let serial_walks = simulate_walks_serial(&graph, start);
-    plot_walks("serial", &serial_walks).ok();
+    plot_walks_variations("serial", &serial_walks).ok();
     //print_walks(&serial_walks);
 
+    println!("simulate parallel...");
     let parallel_walks = simulate_walks_parallel(&graph, start);
-    plot_walks("parallel", &parallel_walks).ok();
+    plot_walks_variations("parallel", &parallel_walks).ok();
     //print_walks(&parallel_walks);
 }
 
@@ -545,7 +547,7 @@ mod test {
     #[test]
     fn transforms_are_inverses() {
         for len in 10..20 {
-            let graph = Graph::new_grid(len);
+            let graph = build_graph(len);
             {
                 let serial = simulate_walks_serial(&graph, 0);
                 let mut round_trip = serial.clone();
@@ -569,7 +571,7 @@ fn test_transformed_walk_lengths_serial() {
     println!("compute serial, then transform to parallel");
     let len = FIXED_LEN;
     let start = 0; //len * (len / 2) + (len / 2);
-    let graph = Graph::new_torus_grid(len);
+    let graph = build_graph(len);
 
     let mut walks = simulate_walks_serial(&graph, start);
     //print_walks(&walks);
@@ -591,7 +593,7 @@ fn test_transformed_walk_lengths_parallel() {
     println!("compute parallel, then transform to serial");
     let len = FIXED_LEN;
     let start = 0; //len * (len / 2) + (len / 2);
-    let graph = Graph::new_grid(len);
+    let graph = build_graph(len);
 
     let mut walks = simulate_walks_parallel(&graph, start);
     //print_walks(&walks);
@@ -608,6 +610,7 @@ fn test_transformed_walk_lengths_parallel() {
     println!("ratio: {}", max_serial as f64 / max_parallel as f64);
 }
 
+/// examine for the graph family passed as argument, which values t_par and t_ser aproxximately have.
 #[allow(dead_code)]
 fn find_max_expected_serial_parallel() {
     let mut len_f = 10.0;
@@ -619,7 +622,7 @@ fn find_max_expected_serial_parallel() {
 
         const EXPERIMENTS_PER_LEN: usize = 10_000;
         let range = [(); EXPERIMENTS_PER_LEN];
-        let graph = Graph::new_grid(len);
+        let graph = build_graph(len);
 
         let serial_sum: usize = range
             .par_iter()
@@ -647,6 +650,9 @@ fn find_max_expected_serial_parallel() {
     }
 }
 
+/// simulate the parallel process, transform the walks to serial processes.
+/// this function should be examined together with [`find_max_expected_serial_parallel`],
+/// where both processes are simulated.
 #[allow(dead_code)]
 fn compare_expected_transformed_serial_parallel() {
     let mut len_f = 10.0;
@@ -658,7 +664,7 @@ fn compare_expected_transformed_serial_parallel() {
 
         const EXPERIMENTS_PER_LEN: usize = 10_000;
         let range = [(); EXPERIMENTS_PER_LEN];
-        let graph = Graph::new_grid(len);
+        let graph = build_graph(len);
 
         let res = range
             .par_iter()
@@ -671,6 +677,9 @@ fn compare_expected_transformed_serial_parallel() {
                 let nr_cuts = walks
                     .iter()
                     .map(|w| {
+                        // if possible, it should be extremly uncommon for the walk of single new pebble
+                        // to be made up of multiple seperated pieces of the walk of the same old pebble.
+                        // yet, we also handle this case here.
                         w.iter()
                             .map(|s| s.pebble)
                             .dedup()
@@ -678,7 +687,7 @@ fn compare_expected_transformed_serial_parallel() {
                             .count()
                     })
                     .sum::<usize>()
-                    - 1;
+                    - 1; // nr cuts is nr segments minus one
                 (max_parallel, max_serial, nr_cuts)
             })
             .reduce(|| (0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
@@ -696,19 +705,36 @@ fn compare_expected_transformed_serial_parallel() {
     }
 }
 
-const FIXED_LEN: usize = 15;
-const PRINT_WALKS: bool = true;
-const PRINT_PROGRESS: bool = false;
-const WALK_LAZILY: bool = false;
-const PRINT_EVERY_FRAME: bool = true;
-const PRINT_PAUSE_TIME: std::time::Duration = std::time::Duration::from_millis(10);
+// ------------------------------------------------------------------
+//                            config
+// ------------------------------------------------------------------
 
-pub fn scrips_main() {
-    //print_static_distribution();
-    //find_max_expected_serial_parallel();
+/// which family of graphs should be examined
+fn build_graph(len: usize) -> Graph {
+    Graph::new_grid(len)
+    //build_graph(len)
+}
+/// if some function assembles only a single graph, this is the used len.
+const FIXED_LEN: usize = 15;
+/// after finishing the simulation, should all walks be printed / plotted
+const PRINT_WALKS: bool = true;
+/// during a simulation, should the screen show the progress (this is a VERY significant slowdown)
+const PRINT_PROGRESS: bool = false;
+/// currently set up with 1/16 chance to not move.
+const WALK_LAZILY: bool = false;
+/// for parallel IDLA and with PRINT_PROGRESS enabled, should every time step be printed
+/// or should ony steps where a pebble finds it's hole be printed?
+const PRINT_EVERY_FRAME: bool = false;
+/// pause computation after PRINT_PROGRESS happened, so one can actually see what is happening
+const PRINT_PAUSE_TIME: std::time::Duration = std::time::Duration::from_millis(100);
+
+pub fn scripts_main() {
+    //print_stationary_distribution();
     //test_walk_lengths_once();
     //test_walks_once();
     //test_transformed_walk_lengths_serial();
-    //test_transformed_walk_lengths_parallel();
-    compare_expected_transformed_serial_parallel();
+    test_transformed_walk_lengths_parallel();
+
+    //find_max_expected_serial_parallel();
+    //compare_expected_transformed_serial_parallel();
 }

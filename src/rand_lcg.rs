@@ -9,7 +9,7 @@ impl Lcg {
         Self { state: seed }
     }
 
-    pub fn next(&mut self) -> u32 {
+    pub fn gen_u32(&mut self) -> u32 {
         let old = self.state;
         //values by Donald Knuth
         self.state = old
@@ -18,35 +18,35 @@ impl Lcg {
         (old >> 16) as u32 //bits in middle have highest quality
     }
 
-    pub fn next_u64(&mut self) -> u64 {
-        let val1 = self.next() as u64;
-        let val2 = self.next() as u64;
+    pub fn gen_u64(&mut self) -> u64 {
+        let val1 = self.gen_u32() as u64;
+        let val2 = self.gen_u32() as u64;
         (val1 << 32) | val2
     }
 
-    pub fn next_usize(&mut self) -> usize {
+    pub fn gen_usize(&mut self) -> usize {
         if cfg!(target_pointer_width = "64") {
-            self.next_u64() as usize
+            self.gen_u64() as usize
         } else {
-            self.next() as usize
+            self.gen_u32() as usize
         }
     }
 
     pub fn usize_hash(seed: usize) -> usize {
         let mut hasher = Self::new(seed as u64);
         hasher.waste(3);
-        hasher.next_usize()
+        hasher.gen_usize()
     }
 
     /// produces random value from uniform distribution over interval `-1.0..1.0`
-    pub fn next_in_unit_range(&mut self) -> f32 {
+    pub fn gen_in_unit_range(&mut self) -> f32 {
         const SCALE: f32 = 2.0 / (u32::MAX as f32);
-        (self.next() as f32) * SCALE - 1.0
+        (self.gen_u32() as f32) * SCALE - 1.0
     }
 
     pub fn waste(&mut self, nr: usize) {
         for _ in 0..nr {
-            self.next();
+            self.gen_u32();
         }
     }
 }
@@ -64,7 +64,7 @@ mod test {
         let mut sig2 = 0.0;
         const N: usize = 10_000;
         for _ in 0..N {
-            let x = rng.next_in_unit_range();
+            let x = rng.gen_in_unit_range();
             max = x.max(max);
             min = x.min(min);
             avg += x;

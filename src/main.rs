@@ -1,3 +1,3 @@
 fn main() {
-    rand_pebble::scripts::scrips_main();
+    rand_pebble::scripts::scripts_main();
 }
