@@ -383,7 +383,7 @@ fn plot_walks(plot_name: &str, walks: &[Vec<Step>]) -> Result<(), Box<dyn std::e
         return Ok(());
     }
     let nr_vertices = walks.len();
-    let longest = max_walk_len(&walks);
+    let longest = max_walk_len(walks);
 
     let file_name = format!("{plot_name}.png");
     let root = BitMapBackend::new(&file_name, (1920, 1080)).into_drawing_area();
@@ -450,6 +450,7 @@ fn plot_walks_variations(
 
     let nr_vertices = walks.len();
     let (_, max_pebble) = pebble_frequencies(walks);
+    walks_clone = Vec::from(walks);
     for walk in &mut walks_clone {
         for Step { pebble, pos: _ } in walk {
             // abuse of pebble meaning: we print different pebbles as different colors,
@@ -457,11 +458,11 @@ fn plot_walks_variations(
             *pebble = if *pebble == max_pebble {
                 nr_vertices
             } else {
-                nr_vertices / 10
+                (nr_vertices * 55) / 100
             };
         }
     }
-    let max_name = format!("{plot_name}-sorted-max");
+    let max_name = format!("{plot_name}-max");
     plot_walks(&max_name, &walks_clone)?;
 
     Ok(())
@@ -705,6 +706,76 @@ fn compare_expected_transformed_serial_parallel() {
     }
 }
 
+/// when simulating parallel IDLA and transforming the walks to serial,
+/// if one finds a non-zero length segment of the originally longest walk in a transformed row,
+/// what is the expected length of such a segment?
+#[allow(dead_code)]
+fn longest_walk_distribution() {
+    use plotters::prelude::*;
+
+    let len = FIXED_LEN;
+    let graph = build_graph(len);
+
+    const NR_BUCKETS: usize = 400;
+    // sum lengths of segments in `.0` and count how often a segment was found in `.1`
+    let mut histogram = [(0, 0); NR_BUCKETS];
+
+    const NR_EXPERIMENTS: usize = 10_000;
+    for experiment_nr in 0..NR_EXPERIMENTS {
+        if experiment_nr % (NR_EXPERIMENTS / 20) == 0 {
+            println!("compute experiment {experiment_nr}");
+        }
+        let mut walks = simulate_walks_parallel(&graph, 0);
+        let slowest_pebble = walks.iter().map(Vec::len).position_max().unwrap();
+        transform_walks_parallel_to_serial(&graph, &mut walks);
+        for (row, walk) in izip!(0.., walks) {
+            let nr_longest = walk.iter().filter(|s| s.pebble == slowest_pebble).count();
+            if nr_longest > 0 {
+                histogram[(row * NR_BUCKETS) / graph.nr_vertices()].0 += nr_longest;
+                histogram[(row * NR_BUCKETS) / graph.nr_vertices()].1 += 1;
+            }
+        }
+    }
+
+    let bucket_size = graph.nr_vertices() as f64 / NR_BUCKETS as f64;
+    let corrected_histogram = histogram
+        .iter()
+        .map(|&(length, frequency)| {
+            if frequency > 0 {
+                length as f64 / (frequency as f64 * bucket_size)
+            } else {
+                0.0
+            }
+        })
+        .collect_vec();
+    println!("corrected histogram: {corrected_histogram:?}");
+    let max_val = *corrected_histogram
+        .iter()
+        .max_by(|x, y| x.partial_cmp(y).unwrap())
+        .unwrap_or(&0.0);
+
+    let plot_name = "histogram-longest-walk.png";
+    let root = BitMapBackend::new(plot_name, (1920, 1080)).into_drawing_area();
+    root.fill(&WHITE).ok();
+    let mut chart = ChartBuilder::on(&root)
+        .caption(plot_name, ("sans-serif", 30).into_font())
+        .margin(10)
+        .x_label_area_size(30)
+        .y_label_area_size(30)
+        .build_cartesian_2d(0..graph.nr_vertices(), 0.0..max_val)
+        .unwrap();
+    chart.configure_mesh().draw().unwrap();
+
+    chart
+        .draw_series(LineSeries::new(
+            (0..NR_BUCKETS).map(|x| (x * bucket_size as usize, corrected_histogram[x])),
+            &RED,
+        ))
+        .unwrap();
+
+    root.present().ok();
+}
+
 // ------------------------------------------------------------------
 //                            config
 // ------------------------------------------------------------------
@@ -715,7 +786,7 @@ fn build_graph(len: usize) -> Graph {
     //Graph::new_torus_grid(len)
 }
 /// if some function assembles only a single graph, this is the used len.
-const FIXED_LEN: usize = 15;
+const FIXED_LEN: usize = 20;
 /// after finishing the simulation, should all walks be printed / plotted
 const PRINT_WALKS: bool = true;
 /// during a simulation, should the screen show the progress (this is a VERY significant slowdown)
@@ -733,7 +804,8 @@ pub fn scripts_main() {
     //test_walk_lengths_once();
     //test_walks_once();
     //test_transformed_walk_lengths_serial();
-    test_transformed_walk_lengths_parallel();
+    //test_transformed_walk_lengths_parallel();
+    longest_walk_distribution();
 
     //find_max_expected_serial_parallel();
     //compare_expected_transformed_serial_parallel();
