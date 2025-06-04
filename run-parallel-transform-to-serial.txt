@@ -1,0 +1,30 @@
+log of call of compare_expected_transformed_serial_parallel, 10000 samples per len.
+
+len =  10, t_par =    1091.27, (transformed) t_ser =     815.88, cuts = 3.61, ratio = 0.7476415448783668
+len =  11, t_par =    1441.46, (transformed) t_ser =    1072.94, cuts = 3.78, ratio = 0.7443392179160374
+len =  12, t_par =    1866.22, (transformed) t_ser =    1374.83, cuts = 3.95, ratio = 0.7366881355043978
+len =  13, t_par =    2340.52, (transformed) t_ser =    1718.15, cuts = 4.09, ratio = 0.7340893659194185
+len =  14, t_par =    2874.72, (transformed) t_ser =    2105.32, cuts = 4.24, ratio = 0.7323561045526193
+len =  16, t_par =    4205.85, (transformed) t_ser =    3056.45, cuts = 4.53, ratio = 0.726714104442806
+len =  17, t_par =    4938.89, (transformed) t_ser =    3566.55, cuts = 4.61, ratio = 0.7221361322354076
+len =  19, t_par =    6726.89, (transformed) t_ser =    4837.45, cuts = 4.84, ratio = 0.719121683208859
+len =  21, t_par =    8820.10, (transformed) t_ser =    6289.29, cuts = 5.06, ratio = 0.7130632496098029
+len =  23, t_par =   11336.32, (transformed) t_ser =    8029.90, cuts = 5.20, ratio = 0.7083336259032604
+len =  25, t_par =   14132.97, (transformed) t_ser =    9995.17, cuts = 5.38, ratio = 0.7072238472953993
+len =  28, t_par =   19015.48, (transformed) t_ser =   13368.10, cuts = 5.61, ratio = 0.7030114123601248
+len =  31, t_par =   24810.07, (transformed) t_ser =   17398.28, cuts = 5.75, ratio = 0.7012586114321523
+len =  34, t_par =   31499.01, (transformed) t_ser =   21823.41, cuts = 5.95, ratio = 0.6928283635869491
+len =  37, t_par =   39109.22, (transformed) t_ser =   27008.05, cuts = 6.17, ratio = 0.6905801654658331
+len =  41, t_par =   51251.26, (transformed) t_ser =   35211.30, cuts = 6.33, ratio = 0.6870327953778961
+len =  45, t_par =   64751.92, (transformed) t_ser =   44417.47, cuts = 6.49, ratio = 0.6859637451487307
+len =  50, t_par =   84982.14, (transformed) t_ser =   57939.64, cuts = 6.71, ratio = 0.6817860781747729
+len =  55, t_par =  107972.90, (transformed) t_ser =   73425.69, cuts = 6.93, ratio = 0.6800381030795691
+len =  61, t_par =  140898.35, (transformed) t_ser =   95186.50, cuts = 7.10, ratio = 0.6755686108117837
+len =  67, t_par =  178398.16, (transformed) t_ser =  119899.96, cuts = 7.29, ratio = 0.6720919243355522
+len =  74, t_par =  226737.88, (transformed) t_ser =  152585.70, cuts = 7.47, ratio = 0.6729607860476877
+len =  81, t_par =  284776.97, (transformed) t_ser =  190745.96, cuts = 7.65, ratio = 0.669808216425397
+len =  89, t_par =  358916.91, (transformed) t_ser =  239293.39, cuts = 7.83, ratio = 0.6667097032750648
+len =  98, t_par =  454302.66, (transformed) t_ser =  301797.60, cuts = 8.04, ratio = 0.6643095716303244
+len = 108, t_par =  576775.06, (transformed) t_ser =  382124.67, cuts = 8.26, ratio = 0.6625194056934163
+
+
