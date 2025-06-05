@@ -1,4 +1,4 @@
-log of call of compare_expected_transformed_serial_parallel, 10000 samples per len.
+log of call of compare_expected_transformed_serial_parallel, 10000 samples per len, graph family Graph::new_grid.
 
 len =  10, t_par =    1091.27, (transformed) t_ser =     815.88, cuts = 3.61, ratio = 0.7476415448783668
 len =  11, t_par =    1441.46, (transformed) t_ser =    1072.94, cuts = 3.78, ratio = 0.7443392179160374

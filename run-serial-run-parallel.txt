@@ -1,4 +1,4 @@
-log of call of find_max_expected_serial_parallel, 10000 samples per len.
+log of call of find_max_expected_serial_parallel, 10000 samples per len, graph family Graph::new_grid.
 
 len =  10, t_ser =     827.28, t_par =    1093.80, ratio = 0.7563370701461508
 len =  11, t_ser =    1064.70, t_par =    1441.22, ratio = 0.7387477138370285
