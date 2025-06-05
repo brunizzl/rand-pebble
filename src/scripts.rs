@@ -1,7 +1,8 @@
 use itertools::{Itertools, izip};
-use rand::Rng;
 
 use crate::bool_csr::BoolCSR;
+
+type PlotRes = Result<(), Box<dyn std::error::Error>>;
 
 pub struct Graph {
     edges: BoolCSR,
@@ -152,6 +153,7 @@ fn print_free_slots<'a>(free_slots: &[bool], len: usize, markers: impl Iterator<
 
 /// simulate parallel IDLA, returned are the lengths of each walk.
 fn simulate_walk_lengths_parallel(graph: &Graph, start_vertex: usize) -> Vec<usize> {
+    use rand::Rng;
     let mut rng = rand::rng();
     let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
     if PRINT_PROGRESS {
@@ -212,6 +214,7 @@ struct Step {
 
 /// simulate parallel IDLA, returned are the walks of all pebbles.
 fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>> {
+    use rand::Rng;
     let mut rng = rand::rng();
     let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
     if PRINT_PROGRESS {
@@ -275,6 +278,7 @@ fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>>
 
 /// simulate sequential IDLA, returned are the lengths of each walk.
 fn simulate_walk_lengths_serial(graph: &Graph, start_vertex: usize) -> Vec<usize> {
+    use rand::Rng;
     let mut rng = rand::rng();
     let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
     if PRINT_PROGRESS {
@@ -313,6 +317,7 @@ fn simulate_walk_lengths_serial(graph: &Graph, start_vertex: usize) -> Vec<usize
 
 /// simulate sequential IDLA, returned are the walks of each pebble.
 fn simulate_walks_serial(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>> {
+    use rand::Rng;
     let mut rng = rand::rng();
     let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
     if PRINT_PROGRESS {
@@ -377,7 +382,7 @@ fn print_walks(walks: &[Vec<Step>]) {
 }
 
 #[allow(dead_code)]
-fn plot_walks(plot_name: &str, walks: &[Vec<Step>]) -> Result<(), Box<dyn std::error::Error>> {
+fn plot_walks(plot_name: &str, walks: &[Vec<Step>]) -> PlotRes {
     use plotters::prelude::*;
     if !PRINT_WALKS {
         return Ok(());
@@ -438,10 +443,7 @@ fn max_walk_len(walks: &[Vec<Step>]) -> usize {
     walks.iter().map(Vec::len).max().unwrap_or(0)
 }
 
-fn plot_walks_variations(
-    plot_name: &str,
-    walks: &[Vec<Step>],
-) -> Result<(), Box<dyn std::error::Error>> {
+fn plot_walks_variations(plot_name: &str, walks: &[Vec<Step>]) -> PlotRes {
     plot_walks(plot_name, walks)?;
     let mut walks_clone = Vec::from(walks);
     walks_clone.sort_by_key(Vec::len);
@@ -706,13 +708,67 @@ fn compare_expected_transformed_serial_parallel() {
     }
 }
 
+fn plot_functions(name: &str, xs: &[usize], yss: &[(Vec<f64>, String)]) -> PlotRes {
+    use plotters::prelude::*;
+    let float_ord = |a: &&f64, b: &&f64| {
+        if let Some(ord) = a.partial_cmp(b) {
+            return ord;
+        }
+        std::cmp::Ordering::Equal
+    };
+    let x_min = *xs.iter().min().unwrap_or(&0);
+    let x_max = *xs.iter().max().unwrap_or(&0);
+    let y_min = *yss
+        .iter()
+        .flat_map(|ys| ys.0.iter())
+        .min_by(float_ord)
+        .unwrap_or(&0.0);
+    let y_max = *yss
+        .iter()
+        .flat_map(|ys| ys.0.iter())
+        .max_by(float_ord)
+        .unwrap_or(&0.0);
+
+    let plot_name = format!("{name}.png");
+    let root = BitMapBackend::new(&plot_name, (1920, 1080)).into_drawing_area();
+    root.fill(&WHITE).ok();
+    let mut chart = ChartBuilder::on(&root)
+        .caption(name, ("sans-serif", 30).into_font())
+        .margin(10)
+        .x_label_area_size(30)
+        .y_label_area_size(30)
+        .build_cartesian_2d(x_min..x_max, y_min..y_max)?;
+    chart.configure_mesh().draw()?;
+
+    let mut draw_legend = false;
+    const COLORS: [RGBColor; 6] = [RED, BLUE, YELLOW, CYAN, GREEN, MAGENTA];
+    for ((ys, name), color) in izip!(yss, COLORS.into_iter().cycle()) {
+        let series =
+            chart.draw_series(LineSeries::new(izip!(xs, ys).map(|(&x, &y)| (x, y)), color))?;
+        if !name.is_empty() {
+            series.label(name);
+            draw_legend = true;
+        }
+    }
+
+    if draw_legend {
+        chart
+            .configure_series_labels()
+            .background_style(WHITE.mix(0.8))
+            .border_style(BLACK)
+            .draw()?;
+    }
+
+    root.present()?;
+
+    Ok(())
+}
+
 /// when simulating parallel IDLA and transforming the walks to serial,
 /// if one finds a non-zero length segment of the originally longest walk in a transformed row,
 /// what is the expected length of such a segment?
 #[allow(dead_code)]
-fn longest_walk_distribution() {
-    use plotters::prelude::*;
-
+fn longest_walk_transformed_distribution() {
     let len = FIXED_LEN;
     let graph = build_graph(len);
 
@@ -740,40 +796,49 @@ fn longest_walk_distribution() {
     let bucket_size = graph.nr_vertices() as f64 / NR_BUCKETS as f64;
     let corrected_histogram = histogram
         .iter()
-        .map(|&(length, frequency)| {
-            if frequency > 0 {
-                length as f64 / (frequency as f64 * bucket_size)
-            } else {
-                0.0
-            }
-        })
+        .map(|&(length, frequency)| length as f64 / (frequency as f64 * bucket_size + 1e-50))
         .collect_vec();
     println!("corrected histogram: {corrected_histogram:?}");
-    let max_val = *corrected_histogram
-        .iter()
-        .max_by(|x, y| x.partial_cmp(y).unwrap())
-        .unwrap_or(&0.0);
+    let xs = (0..NR_BUCKETS)
+        .map(|x| x * bucket_size as usize)
+        .collect_vec();
+    let yss = [(corrected_histogram, String::new())];
+    plot_functions("histogram-longest-walk", &xs, &yss).ok();
+}
 
-    let plot_name = "histogram-longest-walk.png";
-    let root = BitMapBackend::new(plot_name, (1920, 1080)).into_drawing_area();
-    root.fill(&WHITE).ok();
-    let mut chart = ChartBuilder::on(&root)
-        .caption(plot_name, ("sans-serif", 30).into_font())
-        .margin(10)
-        .x_label_area_size(30)
-        .y_label_area_size(30)
-        .build_cartesian_2d(0..graph.nr_vertices(), 0.0..max_val)
-        .unwrap();
-    chart.configure_mesh().draw().unwrap();
+#[allow(dead_code)]
+fn walk_lengths_distributions() {
+    use rayon::prelude::*;
 
-    chart
-        .draw_series(LineSeries::new(
-            (0..NR_BUCKETS).map(|x| (x * bucket_size as usize, corrected_histogram[x])),
-            &RED,
-        ))
-        .unwrap();
+    let len = FIXED_LEN;
+    const NR_EXPERIMENTS: usize = 1_000;
+    let range = [(); NR_EXPERIMENTS];
+    let graph = build_graph(len);
+    let init_vals = || [vec![0; graph.nr_vertices()], vec![0; graph.nr_vertices()]];
+    let [serial_res, parallel_res] = range
+        .par_iter()
+        .map(|_| {
+            let serial = simulate_walk_lengths_serial(&graph, 0);
+            let parallel = simulate_walk_lengths_parallel(&graph, 0);
+            [serial, parallel]
+        })
+        .reduce(init_vals, |mut acc, new| {
+            for (acc_vec, new_vec) in izip!(&mut acc, new) {
+                for (acc_val, new_val) in izip!(acc_vec, new_vec) {
+                    *acc_val += new_val;
+                }
+            }
+            acc
+        });
+    let serial_f64 = serial_res.into_iter().map(|y| y as f64).collect_vec();
+    let parallel_f64 = parallel_res.into_iter().map(|y| y as f64).collect_vec();
 
-    root.present().ok();
+    let xs = (0..graph.nr_vertices()).collect_vec();
+    let yss = [
+        (serial_f64, "serial".to_string()),
+        (parallel_f64, "parallel".to_string()),
+    ];
+    plot_functions("walk-lengths-distribution", &xs, &yss).ok();
 }
 
 // ------------------------------------------------------------------
@@ -795,17 +860,18 @@ const PRINT_PROGRESS: bool = false;
 const WALK_LAZILY: bool = false;
 /// for parallel IDLA and with PRINT_PROGRESS enabled, should every time step be printed
 /// or should ony steps where a pebble finds it's hole be printed?
-const PRINT_EVERY_FRAME: bool = false;
+const PRINT_EVERY_FRAME: bool = true;
 /// pause computation after PRINT_PROGRESS happened, so one can actually see what is happening
 const PRINT_PAUSE_TIME: std::time::Duration = std::time::Duration::from_millis(100);
 
 pub fn scripts_main() {
     //print_stationary_distribution();
-    //test_walk_lengths_once();
+    test_walk_lengths_once();
     //test_walks_once();
     //test_transformed_walk_lengths_serial();
     //test_transformed_walk_lengths_parallel();
-    longest_walk_distribution();
+    //longest_walk_transformed_distribution();
+    //walk_lengths_distributions();
 
     //find_max_expected_serial_parallel();
     //compare_expected_transformed_serial_parallel();
