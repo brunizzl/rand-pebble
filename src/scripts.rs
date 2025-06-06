@@ -5,10 +5,15 @@ use crate::bool_csr::BoolCSR;
 type PlotRes = Result<(), Box<dyn std::error::Error>>;
 
 pub struct Graph {
+    /// `edges[v]` lists all vertex neighboring the vertex `v`.
     edges: BoolCSR,
+    /// either the number of vertices or the squareroot thereof.
+    /// this value is only used for prettier printing.
+    len: usize,
 }
 
 impl Graph {
+    #[allow(dead_code)]
     pub fn new_grid(len: usize) -> Self {
         let mut edges = BoolCSR::new();
         for y in 0..len {
@@ -26,7 +31,7 @@ impl Graph {
                 }
             }
         }
-        Self { edges }
+        Self { edges, len }
     }
 
     #[allow(dead_code)]
@@ -42,7 +47,33 @@ impl Graph {
                 }
             }
         }
-        Self { edges }
+        Self { edges, len }
+    }
+
+    /// in order to allow printing as a square, we construct a complete graph over
+    /// `len` squared many vertices.
+    #[allow(dead_code)]
+    pub fn new_complete_len_times_len(len: usize) -> Self {
+        let nr_vertices = len * len;
+        let mut edges = BoolCSR::new();
+        for v in 0..nr_vertices {
+            edges.add_row((0..nr_vertices).filter(|&u| u != v));
+        }
+        Self { edges, len }
+    }
+
+    /// unlike the other graphs, this one has only `len` many vertices.
+    /// for simplicity, a minimum `len` of `2` is required.
+    #[allow(dead_code)]
+    pub fn new_path(len: usize) -> Self {
+        assert!(len >= 2);
+        let mut edges = BoolCSR::new();
+        edges.add_row([1].into_iter());
+        for v in 1..(len - 1) {
+            edges.add_row([v - 1, v + 1].into_iter());
+        }
+        edges.add_row([len - 2].into_iter());
+        Self { edges, len }
     }
 
     pub fn nr_vertices(&self) -> usize {
@@ -58,6 +89,7 @@ impl Graph {
 /// use rand_pebble::scripts::*;
 /// let g = Graph::new_grid(4);
 /// let (steps_per, steps_total) = find_stationary_distribution(&g, 0.1);
+/// 
 /// assert_eq!(steps_per.len(), g.nr_vertices());
 /// assert_eq!(steps_per.iter().sum::<isize>() as usize, steps_total);
 /// ```
@@ -113,12 +145,29 @@ fn print_stationary_distribution() {
     }
 }
 
+fn initial_print(graph: &Graph) {
+    if PRINT_PROGRESS {
+        let nr_lines = graph.nr_vertices().div_ceil(graph.len);
+        for _ in 0..nr_lines {
+            println!();
+        }
+    }
+}
+
 /// print progress in process.
 /// free vertices are shown as empty space, filled vertices as `'.'`
 /// and vertices with markers show how many markers are held (if > 9 an `'X'` is shown.)
-fn print_free_slots<'a>(free_slots: &[bool], len: usize, markers: impl Iterator<Item = &'a usize>) {
+fn print_free_slots<'a>(
+    graph: &Graph,
+    free_slots: &[bool],
+    markers: impl Iterator<Item = &'a usize>,
+) {
+    if !PRINT_PROGRESS {
+        return;
+    }
     use crossterm::{ExecutableCommand, cursor::MoveUp};
-    std::io::stdout().execute(MoveUp(len as u16)).ok();
+    let nr_lines = graph.nr_vertices().div_ceil(graph.len);
+    std::io::stdout().execute(MoveUp(nr_lines as u16)).ok();
 
     let mut output = free_slots
         .iter()
@@ -138,13 +187,13 @@ fn print_free_slots<'a>(free_slots: &[bool], len: usize, markers: impl Iterator<
             _ => 'X',
         };
     }
-    let mut line_str = String::with_capacity(2 * len);
-    for line in output.chunks(len) {
+    let mut line_str = String::with_capacity(2 * graph.len);
+    for line in output.chunks(graph.len) {
         line_str.clear();
         line_str.extend(
             line.iter()
                 .copied()
-                .interleave(std::iter::repeat_n(' ', len)),
+                .interleave(std::iter::repeat_n(' ', graph.len)),
         );
         println!("| {line_str}|");
     }
@@ -155,12 +204,7 @@ fn print_free_slots<'a>(free_slots: &[bool], len: usize, markers: impl Iterator<
 fn simulate_walk_lengths_parallel(graph: &Graph, start_vertex: usize) -> Vec<usize> {
     use rand::Rng;
     let mut rng = rand::rng();
-    let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
-    if PRINT_PROGRESS {
-        for _ in 0..len {
-            println!();
-        }
-    }
+    initial_print(graph);
     let mut active_pebbles = vec![start_vertex; graph.nr_vertices()];
     let mut new_active_pebbles = active_pebbles.clone();
     let mut walk_lengths = Vec::with_capacity(graph.nr_vertices());
@@ -195,7 +239,7 @@ fn simulate_walk_lengths_parallel(graph: &Graph, start_vertex: usize) -> Vec<usi
         {
             nr_free_when_last_printed = active_pebbles.len();
 
-            print_free_slots(&free_slots, len, active_pebbles.iter());
+            print_free_slots(graph, &free_slots, active_pebbles.iter());
         }
     }
 
@@ -216,12 +260,7 @@ struct Step {
 fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>> {
     use rand::Rng;
     let mut rng = rand::rng();
-    let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
-    if PRINT_PROGRESS {
-        for _ in 0..len {
-            println!();
-        }
-    }
+    initial_print(graph);
     let mut nr_active_pebbles = graph.nr_vertices();
     let mut active_pebbles = vec![true; graph.nr_vertices()];
     let mut walks = (0..graph.nr_vertices())
@@ -268,7 +307,7 @@ fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>>
         if PRINT_PROGRESS && (PRINT_EVERY_FRAME || nr_free_when_last_printed != nr_active_pebbles) {
             nr_free_when_last_printed = nr_active_pebbles;
 
-            print_free_slots(&free_slots, len, curr_pebble_positions.iter());
+            print_free_slots(graph, &free_slots, curr_pebble_positions.iter());
         }
         curr_pebble_positions.clear();
     }
@@ -280,12 +319,7 @@ fn simulate_walks_parallel(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>>
 fn simulate_walk_lengths_serial(graph: &Graph, start_vertex: usize) -> Vec<usize> {
     use rand::Rng;
     let mut rng = rand::rng();
-    let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
-    if PRINT_PROGRESS {
-        for _ in 0..len {
-            println!();
-        }
-    }
+    initial_print(graph);
     let mut walk_lengths = Vec::with_capacity(graph.nr_vertices());
     let mut free_slots = vec![true; graph.nr_vertices()];
     let mut path = Vec::new();
@@ -306,9 +340,7 @@ fn simulate_walk_lengths_serial(graph: &Graph, start_vertex: usize) -> Vec<usize
         free_slots[curr] = false;
         walk_lengths.push(nr_steps);
 
-        if PRINT_PROGRESS {
-            print_free_slots(&free_slots, len, path.iter());
-        }
+        print_free_slots(graph, &free_slots, path.iter());
         path.clear();
     }
 
@@ -319,12 +351,7 @@ fn simulate_walk_lengths_serial(graph: &Graph, start_vertex: usize) -> Vec<usize
 fn simulate_walks_serial(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>> {
     use rand::Rng;
     let mut rng = rand::rng();
-    let len = f64::sqrt(graph.nr_vertices() as f64) as usize;
-    if PRINT_PROGRESS {
-        for _ in 0..len {
-            println!();
-        }
-    }
+    initial_print(graph);
     let mut walks = Vec::with_capacity(graph.nr_vertices());
     let mut free_slots = vec![true; graph.nr_vertices()];
     for pebble in 0..graph.nr_vertices() {
@@ -342,9 +369,7 @@ fn simulate_walks_serial(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>> {
         }
         free_slots[pos] = false;
 
-        if PRINT_PROGRESS {
-            print_free_slots(&free_slots, len, path.iter().map(|s| &s.pos));
-        }
+        print_free_slots(graph, &free_slots, path.iter().map(|s| &s.pos));
         walks.push(path);
     }
 
@@ -354,7 +379,7 @@ fn simulate_walks_serial(graph: &Graph, start_vertex: usize) -> Vec<Vec<Step>> {
 #[allow(dead_code)]
 fn test_walk_lengths_once() {
     let len = FIXED_LEN;
-    let start = len * (len / 2) + (len / 2);
+    let start = 0; //len * (len / 2) + (len / 2);
     let graph = build_graph(len);
 
     let mut serial_walk_lengths = simulate_walk_lengths_serial(&graph, start);
@@ -869,8 +894,10 @@ fn walk_lengths_distributions() {
 
 /// which family of graphs should be examined
 fn build_graph(len: usize) -> Graph {
-    Graph::new_grid(len)
+    //Graph::new_grid(len)
     //Graph::new_torus_grid(len)
+    //Graph::new_complete_len_times_len(len)
+    Graph::new_path(len)
 }
 /// if some function assembles only a single graph, this is the used len.
 const FIXED_LEN: usize = 20;
@@ -888,7 +915,7 @@ const PRINT_PAUSE_TIME: std::time::Duration = std::time::Duration::from_millis(1
 
 pub fn scripts_main() {
     //print_stationary_distribution();
-    test_walk_lengths_once();
+    //test_walk_lengths_once();
     //test_walks_once();
     //test_transformed_walk_lengths_serial();
     //test_transformed_walk_lengths_parallel();
@@ -896,5 +923,5 @@ pub fn scripts_main() {
     //walk_lengths_distributions();
 
     //find_max_expected_serial_parallel();
-    //compare_expected_transformed_serial_parallel();
+    compare_expected_transformed_serial_parallel();
 }
