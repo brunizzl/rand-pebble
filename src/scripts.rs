@@ -488,27 +488,38 @@ fn test_walks_once() {
 }
 
 /// algorithm from paper
-fn transform_walks_serial_to_parallel(graph: &Graph, walks: &mut [Vec<Step>]) {
+fn transform_walks_serial_to_parallel(walks: &mut [Vec<Step>]) {
+    let nr_vertices = walks.len();
+    // if `v` is a vertex, then `walks[ends_in_vertex[v]].last() == Some(&v)` must hold.
+    // this cashes information, that we would otherwise compute in O(nr_vertices),
+    // whenever a cut-and-paste occurs.
+    let mut ends_in_vertex = vec![usize::MAX; nr_vertices];
+    for (i, walk) in izip!(0.., walks.iter()) {
+        let last_vertex = walk.last().unwrap().pos;
+        debug_assert_eq!(ends_in_vertex[last_vertex], usize::MAX);
+        ends_in_vertex[last_vertex] = i;
+    }
+    debug_assert!(!ends_in_vertex.contains(&usize::MAX));
+
     let mut nr_vertices_visited = 0;
-    let mut vertices_visited = vec![false; graph.nr_vertices()];
+    let mut vertices_visited = vec![false; nr_vertices];
     let mut t = 0;
-    while nr_vertices_visited < graph.nr_vertices() {
-        for i in 0..graph.nr_vertices() {
-            if walks[i].len() > t {
-                let Step { pebble: _, pos } = walks[i][t];
+    while nr_vertices_visited < nr_vertices {
+        for i_donor in 0..walks.len() {
+            if walks[i_donor].len() > t {
+                let Step { pebble: _, pos } = walks[i_donor][t];
                 if !vertices_visited[pos] {
                     vertices_visited[pos] = true;
                     nr_vertices_visited += 1;
-                    let paste_pos = walks
-                        .iter()
-                        .position(|w| w.last().is_some_and(|s| s.pos == pos))
-                        .unwrap();
-                    if paste_pos != i {
-                        let mut walk_i = std::mem::take(&mut walks[i]);
-                        let to_copy = &walk_i[(t + 1)..];
-                        walks[paste_pos].extend_from_slice(to_copy);
-                        walk_i.truncate(t + 1);
-                        walks[i] = walk_i;
+                    let i_reciever = ends_in_vertex[pos];
+                    debug_assert!(walks[i_reciever].last().is_some_and(|s| s.pos == pos));
+                    if i_reciever != i_donor {
+                        let mut donor_walk = std::mem::take(&mut walks[i_donor]);
+                        ends_in_vertex.swap(pos, donor_walk.last().unwrap().pos);
+                        let to_transfer = &donor_walk[(t + 1)..];
+                        walks[i_reciever].extend_from_slice(to_transfer);
+                        donor_walk.truncate(t + 1);
+                        walks[i_donor] = donor_walk;
                     }
                 }
             }
@@ -518,24 +529,35 @@ fn transform_walks_serial_to_parallel(graph: &Graph, walks: &mut [Vec<Step>]) {
 }
 
 /// algorithm from paper
-fn transform_walks_parallel_to_serial(graph: &Graph, walks: &mut [Vec<Step>]) {
-    let mut vertices_visited = vec![false; graph.nr_vertices()];
-    for i in 0..graph.nr_vertices() {
+fn transform_walks_parallel_to_serial(walks: &mut [Vec<Step>]) {
+    let nr_vertices = walks.len();
+    // if `v` is a vertex, then `walks[ends_in_vertex[v]].last() == Some(&v)` must hold.
+    // this cashes information, that we would otherwise compute in O(nr_vertices),
+    // whenever a cut-and-paste occurs.
+    let mut ends_in_vertex = vec![usize::MAX; nr_vertices];
+    for (i, walk) in izip!(0.., walks.iter()) {
+        let last_vertex = walk.last().unwrap().pos;
+        debug_assert_eq!(ends_in_vertex[last_vertex], usize::MAX);
+        ends_in_vertex[last_vertex] = i;
+    }
+    debug_assert!(!ends_in_vertex.contains(&usize::MAX));
+
+    let mut vertices_visited = vec![false; nr_vertices];
+    for i_donor in 0..walks.len() {
         let mut t = 0;
-        while t < walks[i].len() {
-            let Step { pebble: _, pos } = walks[i][t];
+        while t < walks[i_donor].len() {
+            let Step { pebble: _, pos } = walks[i_donor][t];
             if !vertices_visited[pos] {
                 vertices_visited[pos] = true;
-                let paste_pos = walks
-                    .iter()
-                    .position(|w| w.last().is_some_and(|s| s.pos == pos))
-                    .unwrap();
-                if paste_pos != i {
-                    let mut walk_i = std::mem::take(&mut walks[i]);
-                    let to_copy = &walk_i[(t + 1)..];
-                    walks[paste_pos].extend_from_slice(to_copy);
-                    walk_i.truncate(t + 1);
-                    walks[i] = walk_i;
+                let i_reciever = ends_in_vertex[pos];
+                debug_assert!(walks[i_reciever].last().is_some_and(|s| s.pos == pos));
+                if i_reciever != i_donor {
+                    let mut donor_walk = std::mem::take(&mut walks[i_donor]);
+                    ends_in_vertex.swap(pos, donor_walk.last().unwrap().pos);
+                    let to_transfer = &donor_walk[(t + 1)..];
+                    walks[i_reciever].extend_from_slice(to_transfer);
+                    donor_walk.truncate(t + 1);
+                    walks[i_donor] = donor_walk;
                 }
             }
             t += 1;
@@ -554,15 +576,15 @@ mod test {
             {
                 let serial = simulate_walks_serial(&graph, 0);
                 let mut round_trip = serial.clone();
-                transform_walks_serial_to_parallel(&graph, &mut round_trip);
-                transform_walks_parallel_to_serial(&graph, &mut round_trip);
+                transform_walks_serial_to_parallel(&mut round_trip);
+                transform_walks_parallel_to_serial(&mut round_trip);
                 assert_eq!(serial, round_trip);
             }
             {
                 let parallel = simulate_walks_parallel(&graph, 0);
                 let mut round_trip = parallel.clone();
-                transform_walks_parallel_to_serial(&graph, &mut round_trip);
-                transform_walks_serial_to_parallel(&graph, &mut round_trip);
+                transform_walks_parallel_to_serial(&mut round_trip);
+                transform_walks_serial_to_parallel(&mut round_trip);
                 assert_eq!(parallel, round_trip);
             }
         }
@@ -582,7 +604,7 @@ fn test_transformed_walk_lengths_serial() {
     let max_serial = max_walk_len(&walks);
     println!("max serial len = {max_serial}");
 
-    transform_walks_serial_to_parallel(&graph, &mut walks);
+    transform_walks_serial_to_parallel(&mut walks);
     //print_walks(&walks);
     plot_walks_variations("parallel", &walks).ok();
     let max_parallel = max_walk_len(&walks);
@@ -604,7 +626,7 @@ fn test_transformed_walk_lengths_parallel() {
     let max_parallel = max_walk_len(&walks);
     println!("max parallel len = {max_parallel}");
 
-    transform_walks_parallel_to_serial(&graph, &mut walks);
+    transform_walks_parallel_to_serial(&mut walks);
     //print_walks(&walks);
     plot_walks_variations("serial", &walks).ok();
     let max_serial = max_walk_len(&walks);
@@ -675,7 +697,7 @@ fn compare_expected_transformed_serial_parallel() {
                 let mut walks = simulate_walks_parallel(&graph, 0);
                 let max_parallel = max_walk_len(&walks);
                 let slowest_pebble = walks.iter().map(Vec::len).position_max().unwrap();
-                transform_walks_parallel_to_serial(&graph, &mut walks);
+                transform_walks_parallel_to_serial(&mut walks);
                 let max_serial = max_walk_len(&walks);
                 let nr_cuts = walks
                     .iter()
@@ -783,7 +805,7 @@ fn longest_walk_transformed_distribution() {
         }
         let mut walks = simulate_walks_parallel(&graph, 0);
         let slowest_pebble = walks.iter().map(Vec::len).position_max().unwrap();
-        transform_walks_parallel_to_serial(&graph, &mut walks);
+        transform_walks_parallel_to_serial(&mut walks);
         for (row, walk) in izip!(0.., walks) {
             let nr_longest = walk.iter().filter(|s| s.pebble == slowest_pebble).count();
             if nr_longest > 0 {
