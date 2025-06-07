@@ -10,6 +10,8 @@ pub struct Graph {
     /// either the number of vertices or the squareroot thereof.
     /// this value is only used for prettier printing.
     len: usize,
+    /// only used for logging
+    name: &'static str,
 }
 
 impl Graph {
@@ -31,7 +33,8 @@ impl Graph {
                 }
             }
         }
-        Self { edges, len }
+        let name = "grid";
+        Self { edges, len, name }
     }
 
     #[allow(dead_code)]
@@ -47,7 +50,8 @@ impl Graph {
                 }
             }
         }
-        Self { edges, len }
+        let name = "torus";
+        Self { edges, len, name }
     }
 
     /// in order to allow printing as a square, we construct a complete graph over
@@ -59,10 +63,11 @@ impl Graph {
         for v in 0..nr_vertices {
             edges.add_row((0..nr_vertices).filter(|&u| u != v));
         }
-        Self { edges, len }
+        let name = "complete";
+        Self { edges, len, name }
     }
 
-    /// unlike the other graphs, this one has only `len` many vertices.
+    /// unlike most other graphs, this one has only `len` many vertices.
     /// for simplicity, a minimum `len` of `2` is required.
     #[allow(dead_code)]
     pub fn new_path(len: usize) -> Self {
@@ -73,7 +78,25 @@ impl Graph {
             edges.add_row([v - 1, v + 1].into_iter());
         }
         edges.add_row([len - 2].into_iter());
-        Self { edges, len }
+
+        let name = "path";
+        Self { edges, len, name }
+    }
+
+    /// unlike most other graphs, this one has only `len` many vertices.
+    /// for simplicity, a minimum `len` of `2` is required.
+    #[allow(dead_code)]
+    pub fn new_circle(len: usize) -> Self {
+        assert!(len >= 2);
+        let mut edges = BoolCSR::new();
+        edges.add_row([len - 1, 1].into_iter());
+        for v in 1..(len - 1) {
+            edges.add_row([v - 1, v + 1].into_iter());
+        }
+        edges.add_row([len - 2, 0].into_iter());
+
+        let name = "circle";
+        Self { edges, len, name }
     }
 
     pub fn nr_vertices(&self) -> usize {
@@ -89,7 +112,7 @@ impl Graph {
 /// use rand_pebble::scripts::*;
 /// let g = Graph::new_grid(4);
 /// let (steps_per, steps_total) = find_stationary_distribution(&g, 0.1);
-/// 
+///
 /// assert_eq!(steps_per.len(), g.nr_vertices());
 /// assert_eq!(steps_per.iter().sum::<isize>() as usize, steps_total);
 /// ```
@@ -665,13 +688,12 @@ fn test_transformed_walk_lengths_parallel() {
 fn find_max_expected_serial_parallel() {
     let mut len_f = 10.0;
 
-    while len_f < 200.0 {
+    while len_f < 2000.0 {
         use rayon::prelude::*;
         let len = len_f as usize;
         len_f *= 1.1;
 
-        const EXPERIMENTS_PER_LEN: usize = 10_000;
-        let range = [(); EXPERIMENTS_PER_LEN];
+        let range = [(); SAMPLES_PER_EXPERIMENT];
         let graph = build_graph(len);
 
         let serial_sum: usize = range
@@ -691,8 +713,8 @@ fn find_max_expected_serial_parallel() {
             })
             .sum();
 
-        let exp_serial = serial_sum as f64 / EXPERIMENTS_PER_LEN as f64;
-        let exp_parallel = parallel_sum as f64 / EXPERIMENTS_PER_LEN as f64;
+        let exp_serial = serial_sum as f64 / SAMPLES_PER_EXPERIMENT as f64;
+        let exp_parallel = parallel_sum as f64 / SAMPLES_PER_EXPERIMENT as f64;
         let ratio = serial_sum as f64 / parallel_sum as f64;
         println!(
             "len = {len:>3}, t_ser = {exp_serial:>10.2}, t_par = {exp_parallel:>10.2}, ratio = {ratio}"
@@ -707,13 +729,12 @@ fn find_max_expected_serial_parallel() {
 fn compare_expected_transformed_serial_parallel() {
     let mut len_f = 10.0;
 
-    while len_f < 200.0 {
+    while len_f < 2000.0 {
         use rayon::prelude::*;
         let len = len_f as usize;
         len_f *= 1.1;
 
-        const EXPERIMENTS_PER_LEN: usize = 10_000;
-        let range = [(); EXPERIMENTS_PER_LEN];
+        let range = [(); SAMPLES_PER_EXPERIMENT];
         let graph = build_graph(len);
 
         let res = range
@@ -741,10 +762,10 @@ fn compare_expected_transformed_serial_parallel() {
                 (max_parallel, max_serial, nr_cuts)
             })
             .reduce(|| (0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
-        let avg_max_parallel = res.0 as f64 / EXPERIMENTS_PER_LEN as f64;
-        let avg_max_serial = res.1 as f64 / EXPERIMENTS_PER_LEN as f64;
+        let avg_max_parallel = res.0 as f64 / SAMPLES_PER_EXPERIMENT as f64;
+        let avg_max_serial = res.1 as f64 / SAMPLES_PER_EXPERIMENT as f64;
         let ratio = avg_max_serial / avg_max_parallel;
-        let avg_nr_cuts = res.2 as f64 / EXPERIMENTS_PER_LEN as f64;
+        let avg_nr_cuts = res.2 as f64 / SAMPLES_PER_EXPERIMENT as f64;
         println!(
             "len = {len:>3}, \
             t_par = {avg_max_parallel:>10.2}, \
@@ -823,9 +844,8 @@ fn longest_walk_transformed_distribution() {
     // sum lengths of segments in `.0` and count how often a segment was found in `.1`
     let mut histogram = [(0, 0); NR_BUCKETS];
 
-    const NR_EXPERIMENTS: usize = 10_000;
-    for experiment_nr in 0..NR_EXPERIMENTS {
-        if experiment_nr % (NR_EXPERIMENTS / 20) == 0 {
+    for experiment_nr in 0..SAMPLES_PER_EXPERIMENT {
+        if experiment_nr % (SAMPLES_PER_EXPERIMENT / 20) == 0 {
             println!("compute experiment {experiment_nr}");
         }
         let mut walks = simulate_walks_parallel(&graph, 0);
@@ -858,8 +878,7 @@ fn walk_lengths_distributions() {
     use rayon::prelude::*;
 
     let len = FIXED_LEN;
-    const NR_EXPERIMENTS: usize = 1_000;
-    let range = [(); NR_EXPERIMENTS];
+    let range = [(); SAMPLES_PER_EXPERIMENT];
     let graph = build_graph(len);
     let init_vals = || [vec![0; graph.nr_vertices()], vec![0; graph.nr_vertices()]];
     let [serial_res, parallel_res] = range
@@ -888,6 +907,13 @@ fn walk_lengths_distributions() {
     plot_functions("walk-lengths-distribution", &xs, &yss).ok();
 }
 
+fn print_config_info() {
+    let graph = build_graph(FIXED_LEN);
+    println!("graph family: {}", graph.name);
+    println!("samples per experiment: {SAMPLES_PER_EXPERIMENT}");
+    println!("walk lazily: {WALK_LAZILY}");
+}
+
 // ------------------------------------------------------------------
 //                            config
 // ------------------------------------------------------------------
@@ -898,13 +924,16 @@ fn build_graph(len: usize) -> Graph {
     //Graph::new_torus_grid(len)
     //Graph::new_complete_len_times_len(len)
     Graph::new_path(len)
+    //Graph::new_circle(len)
 }
+/// if an expected value is estimated by repeated random experiments, this is the number of experiments performed.
+const SAMPLES_PER_EXPERIMENT: usize = 10_000;
 /// if some function assembles only a single graph, this is the used len.
 const FIXED_LEN: usize = 20;
 /// after finishing the simulation, should all walks be printed / plotted
 const PRINT_WALKS: bool = true;
 /// during a simulation, should the screen show the progress (this is a VERY significant slowdown)
-const PRINT_PROGRESS: bool = false;
+const PRINT_PROGRESS: bool = !cfg!(test) && false;
 /// currently set up with 1/16 chance to not move.
 const WALK_LAZILY: bool = false;
 /// for parallel IDLA and with PRINT_PROGRESS enabled, should every time step be printed
@@ -914,6 +943,8 @@ const PRINT_EVERY_FRAME: bool = true;
 const PRINT_PAUSE_TIME: std::time::Duration = std::time::Duration::from_millis(100);
 
 pub fn scripts_main() {
+    print_config_info();
+
     //print_stationary_distribution();
     //test_walk_lengths_once();
     //test_walks_once();
@@ -922,6 +953,6 @@ pub fn scripts_main() {
     //longest_walk_transformed_distribution();
     //walk_lengths_distributions();
 
-    //find_max_expected_serial_parallel();
+    find_max_expected_serial_parallel();
     compare_expected_transformed_serial_parallel();
 }

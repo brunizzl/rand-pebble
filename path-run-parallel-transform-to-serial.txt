@@ -1,0 +1,34 @@
+log of call of compare_expected_transformed_serial_parallel, 1_000_000 samples per len, graph family Graph::new_path.
+
+len =  10, t_par =     135.74, (transformed) t_ser =     115.27, cuts = 1.68, ratio = 0.8491976946697157
+len =  11, t_par =     173.22, (transformed) t_ser =     146.51, cuts = 1.79, ratio = 0.8457750705034225
+len =  12, t_par =     215.77, (transformed) t_ser =     181.92, cuts = 1.89, ratio = 0.8431318246818367
+len =  13, t_par =     263.85, (transformed) t_ser =     221.68, cuts = 1.99, ratio = 0.8401712673191597
+len =  14, t_par =     317.05, (transformed) t_ser =     265.89, cuts = 2.07, ratio = 0.8386415846571031
+len =  16, t_par =     441.70, (transformed) t_ser =     369.09, cuts = 2.22, ratio = 0.8356193765932614
+len =  17, t_par =     511.99, (transformed) t_ser =     427.02, cuts = 2.29, ratio = 0.8340449830575352
+len =  19, t_par =     670.51, (transformed) t_ser =     558.02, cuts = 2.41, ratio = 0.8322355807334205
+len =  21, t_par =     854.65, (transformed) t_ser =     709.65, cuts = 2.53, ratio = 0.8303380880281761
+len =  23, t_par =    1063.03, (transformed) t_ser =     881.65, cuts = 2.63, ratio = 0.8293719012620948
+len =  25, t_par =    1297.59, (transformed) t_ser =    1074.74, cuts = 2.72, ratio = 0.8282600532298355
+len =  28, t_par =    1698.50, (transformed) t_ser =    1404.99, cuts = 2.84, ratio = 0.8271956635847293
+len =  31, t_par =    2160.36, (transformed) t_ser =    1784.51, cuts = 2.95, ratio = 0.8260248668116067
+len =  34, t_par =    2685.75, (transformed) t_ser =    2216.35, cuts = 3.04, ratio = 0.8252265399509485
+len =  37, t_par =    3272.28, (transformed) t_ser =    2698.29, cuts = 3.13, ratio = 0.8245893944566293
+len =  41, t_par =    4152.46, (transformed) t_ser =    3422.03, cuts = 3.24, ratio = 0.8240968150792396
+len =  45, t_par =    5155.22, (transformed) t_ser =    4245.49, cuts = 3.34, ratio = 0.8235316500082246
+len =  50, t_par =    6577.39, (transformed) t_ser =    5413.13, cuts = 3.45, ratio = 0.8229902471065388
+len =  55, t_par =    8191.84, (transformed) t_ser =    6741.04, cuts = 3.55, ratio = 0.8228970878330301
+len =  61, t_par =   10376.71, (transformed) t_ser =    8535.96, cuts = 3.65, ratio = 0.8226081815384167
+len =  67, t_par =   12866.09, (transformed) t_ser =   10580.64, cuts = 3.75, ratio = 0.8223663329603641
+len =  74, t_par =   16139.28, (transformed) t_ser =   13267.85, cuts = 3.86, ratio = 0.8220844584168003
+len =  81, t_par =   19810.09, (transformed) t_ser =   16279.75, cuts = 3.95, ratio = 0.8217908114775409
+len =  89, t_par =   24517.35, (transformed) t_ser =   20151.20, cuts = 4.04, ratio = 0.8219159212061048
+len =  98, t_par =   30482.88, (transformed) t_ser =   25049.53, cuts = 4.14, ratio = 0.821757280566177
+len = 108, t_par =   37920.01, (transformed) t_ser =   31162.51, cuts = 4.24, ratio = 0.8217958398521057
+len = 119, t_par =   47167.28, (transformed) t_ser =   38779.12, cuts = 4.34, ratio = 0.8221613818729646
+len = 131, t_par =   58484.05, (transformed) t_ser =   48074.10, cuts = 4.44, ratio = 0.8220034943740228
+len = 144, t_par =   72231.43, (transformed) t_ser =   59394.31, cuts = 4.53, ratio = 0.8222780251929417
+len = 158, t_par =   88811.14, (transformed) t_ser =   73055.88, cuts = 4.62, ratio = 0.8225981406064662
+len = 174, t_par =  110123.77, (transformed) t_ser =   90587.62, cuts = 4.72, ratio = 0.8225981984934697
+
