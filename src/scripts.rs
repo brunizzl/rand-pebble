@@ -84,10 +84,10 @@ impl Graph {
     }
 
     /// unlike most other graphs, this one has only `len` many vertices.
-    /// for simplicity, a minimum `len` of `2` is required.
+    /// there are no circles with fewer than `3` vertices.
     #[allow(dead_code)]
     pub fn new_circle(len: usize) -> Self {
-        assert!(len >= 2);
+        assert!(len >= 3);
         let mut edges = BoolCSR::new();
         edges.add_row([len - 1, 1].into_iter());
         for v in 1..(len - 1) {
@@ -101,6 +101,16 @@ impl Graph {
 
     pub fn nr_vertices(&self) -> usize {
         self.edges.nr_rows()
+    }
+
+    #[allow(dead_code)]
+    pub fn debug_print(&self) {
+        for (v, neighs) in izip!(0.., self.edges.iter_rows()) {
+            if self.len < self.nr_vertices() && v % self.len == 0 {
+                println!("--------------------------------");
+            }
+            println!("{v:>4} | {neighs:?}");
+        }
     }
 }
 
@@ -152,17 +162,14 @@ pub fn find_stationary_distribution(graph: &Graph, eps: f64) -> (Vec<isize>, usi
 /// prints for each vertex how often it is visited, relative to the average.
 /// => above average iff shown value is greater than 1.0
 #[allow(dead_code)]
-fn print_stationary_distribution() {
+fn print_stationary_distribution(eps: f64) {
     let len = FIXED_LEN;
     let graph = build_graph(len);
-    let (visits, nr_steps) = find_stationary_distribution(&graph, 0.002);
-    for y in 0..len {
-        for x in 0..len {
-            let val = visits[y * len + x];
-            print!(
-                " {:>.2}",
-                (val as usize * len * len) as f64 / (nr_steps as f64)
-            );
+    let (visits, nr_steps) = find_stationary_distribution(&graph, eps);
+    let avg = graph.nr_vertices() as f64 / nr_steps as f64;
+    for line in visits.chunks(len) {
+        for &entry in line {
+            print!(" {:>.2}", entry as f64 * avg);
         }
         println!();
     }
@@ -688,7 +695,7 @@ fn test_transformed_walk_lengths_parallel() {
 fn find_max_expected_serial_parallel() {
     let mut len_f = 10.0;
 
-    while len_f < 2000.0 {
+    while len_f < 200.0 {
         use rayon::prelude::*;
         let len = len_f as usize;
         len_f *= 1.1;
@@ -696,29 +703,41 @@ fn find_max_expected_serial_parallel() {
         let range = [(); SAMPLES_PER_EXPERIMENT];
         let graph = build_graph(len);
 
-        let serial_sum: usize = range
-            .par_iter()
-            .map(|_| {
-                let mut serial = simulate_walk_lengths_serial(&graph, 0);
-                serial.sort();
-                *serial.last().unwrap()
-            })
-            .sum();
+        let last_v_0 = if START_AT_0 {
+            0
+        } else {
+            println!("-------------------------------------------------");
+            graph.nr_vertices().div_ceil(2)
+        };
+        for v_0 in 0..=last_v_0 {
+            let serial_sum: usize = range
+                .par_iter()
+                .map(|_| {
+                    let mut serial = simulate_walk_lengths_serial(&graph, v_0);
+                    serial.sort();
+                    *serial.last().unwrap()
+                })
+                .sum();
 
-        let parallel_sum: usize = range
-            .par_iter()
-            .map(|_| {
-                let parallel = simulate_walk_lengths_parallel(&graph, 0);
-                *parallel.last().unwrap()
-            })
-            .sum();
+            let parallel_sum: usize = range
+                .par_iter()
+                .map(|_| {
+                    let parallel = simulate_walk_lengths_parallel(&graph, v_0);
+                    *parallel.last().unwrap()
+                })
+                .sum();
 
-        let exp_serial = serial_sum as f64 / SAMPLES_PER_EXPERIMENT as f64;
-        let exp_parallel = parallel_sum as f64 / SAMPLES_PER_EXPERIMENT as f64;
-        let ratio = serial_sum as f64 / parallel_sum as f64;
-        println!(
-            "len = {len:>3}, t_ser = {exp_serial:>10.2}, t_par = {exp_parallel:>10.2}, ratio = {ratio}"
-        );
+            let exp_serial = serial_sum as f64 / SAMPLES_PER_EXPERIMENT as f64;
+            let exp_parallel = parallel_sum as f64 / SAMPLES_PER_EXPERIMENT as f64;
+            let ratio = serial_sum as f64 / parallel_sum as f64;
+            println!(
+                "len ={len:>4}, \
+                t_par ={exp_parallel:>11.2}, \
+                t_ser ={exp_serial:>11.2}, \
+                ratio ={ratio:>6.3}, \
+                v_0 = {v_0}"
+            );
+        }
     }
 }
 
@@ -729,7 +748,7 @@ fn find_max_expected_serial_parallel() {
 fn compare_expected_transformed_serial_parallel() {
     let mut len_f = 10.0;
 
-    while len_f < 2000.0 {
+    while len_f < 200.0 {
         use rayon::prelude::*;
         let len = len_f as usize;
         len_f *= 1.1;
@@ -737,42 +756,51 @@ fn compare_expected_transformed_serial_parallel() {
         let range = [(); SAMPLES_PER_EXPERIMENT];
         let graph = build_graph(len);
 
-        let res = range
-            .par_iter()
-            .map(|_| {
-                let mut walks = simulate_walks_parallel(&graph, 0);
-                let max_parallel = max_walk_len(&walks);
-                let slowest_pebble = walks.iter().map(Vec::len).position_max().unwrap();
-                transform_walks_parallel_to_serial(&mut walks);
-                let max_serial = max_walk_len(&walks);
-                let nr_cuts = walks
-                    .iter()
-                    .map(|w| {
-                        // if possible, it should be extremly uncommon for the walk of single new pebble
-                        // to be made up of multiple seperated pieces of the walk of the same old pebble.
-                        // yet, we also handle this case here.
-                        w.iter()
-                            .map(|s| s.pebble)
-                            .dedup()
-                            .filter(|&p| p == slowest_pebble)
-                            .count()
-                    })
-                    .sum::<usize>()
-                    - 1; // nr cuts is nr segments minus one
-                (max_parallel, max_serial, nr_cuts)
-            })
-            .reduce(|| (0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
-        let avg_max_parallel = res.0 as f64 / SAMPLES_PER_EXPERIMENT as f64;
-        let avg_max_serial = res.1 as f64 / SAMPLES_PER_EXPERIMENT as f64;
-        let ratio = avg_max_serial / avg_max_parallel;
-        let avg_nr_cuts = res.2 as f64 / SAMPLES_PER_EXPERIMENT as f64;
-        println!(
-            "len = {len:>3}, \
-            t_par = {avg_max_parallel:>10.2}, \
-            (transformed) t_ser = {avg_max_serial:>10.2}, \
-            cuts = {avg_nr_cuts:>3.2}, \
-            ratio = {ratio}"
-        );
+        let last_v_0 = if START_AT_0 {
+            0
+        } else {
+            println!("-------------------------------------------------");
+            graph.nr_vertices().div_ceil(2)
+        };
+        for v_0 in 0..=last_v_0 {
+            let res = range
+                .par_iter()
+                .map(|_| {
+                    let mut walks = simulate_walks_parallel(&graph, v_0);
+                    let max_parallel = max_walk_len(&walks);
+                    let slowest_pebble = walks.iter().map(Vec::len).position_max().unwrap();
+                    transform_walks_parallel_to_serial(&mut walks);
+                    let max_serial = max_walk_len(&walks);
+                    let nr_cuts = walks
+                        .iter()
+                        .map(|w| {
+                            // if possible, it should be extremly uncommon for the walk of single new pebble
+                            // to be made up of multiple seperated pieces of the walk of the same old pebble.
+                            // yet, we also handle this case here.
+                            w.iter()
+                                .map(|s| s.pebble)
+                                .dedup()
+                                .filter(|&p| p == slowest_pebble)
+                                .count()
+                        })
+                        .sum::<usize>()
+                        - 1; // nr cuts is nr segments minus one
+                    (max_parallel, max_serial, nr_cuts)
+                })
+                .reduce(|| (0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
+            let avg_max_parallel = res.0 as f64 / SAMPLES_PER_EXPERIMENT as f64;
+            let avg_max_serial = res.1 as f64 / SAMPLES_PER_EXPERIMENT as f64;
+            let ratio = avg_max_serial / avg_max_parallel;
+            let avg_nr_cuts = res.2 as f64 / SAMPLES_PER_EXPERIMENT as f64;
+            println!(
+                "len ={len:>4}, \
+                t_par ={avg_max_parallel:>11.2}, \
+                (transformed) t_ser ={avg_max_serial:>11.2}, \
+                cuts ={avg_nr_cuts:>6.3}, \
+                ratio ={ratio:>6.3}, \
+                v_0 = {v_0}"
+            );
+        }
     }
 }
 
@@ -926,10 +954,13 @@ fn build_graph(len: usize) -> Graph {
     Graph::new_path(len)
     //Graph::new_circle(len)
 }
-/// if an expected value is estimated by repeated random experiments, this is the number of experiments performed.
-const SAMPLES_PER_EXPERIMENT: usize = 10_000;
+/// if an expected value is estimated by averaging over random samples, this is the number of samples taken.
+const SAMPLES_PER_EXPERIMENT: usize = 1_000_000;
+/// fix vertex `0` as starting position, not test (half of) all vertices.
+/// note: testing half of the vertices suffice in the other case, because all examined graphs have enough symmetry.
+const START_AT_0: bool = false;
 /// if some function assembles only a single graph, this is the used len.
-const FIXED_LEN: usize = 20;
+const FIXED_LEN: usize = 40;
 /// after finishing the simulation, should all walks be printed / plotted
 const PRINT_WALKS: bool = true;
 /// during a simulation, should the screen show the progress (this is a VERY significant slowdown)
@@ -939,13 +970,13 @@ const WALK_LAZILY: bool = false;
 /// for parallel IDLA and with PRINT_PROGRESS enabled, should every time step be printed
 /// or should ony steps where a pebble finds it's hole be printed?
 const PRINT_EVERY_FRAME: bool = true;
-/// pause computation after PRINT_PROGRESS happened, so one can actually see what is happening
+/// pause computation after PRINT_PROGRESS happened, so one can actually admire the picture.
 const PRINT_PAUSE_TIME: std::time::Duration = std::time::Duration::from_millis(100);
 
 pub fn scripts_main() {
     print_config_info();
 
-    //print_stationary_distribution();
+    print_stationary_distribution(0.00000001);
     //test_walk_lengths_once();
     //test_walks_once();
     //test_transformed_walk_lengths_serial();
@@ -953,6 +984,6 @@ pub fn scripts_main() {
     //longest_walk_transformed_distribution();
     //walk_lengths_distributions();
 
-    find_max_expected_serial_parallel();
-    compare_expected_transformed_serial_parallel();
+    //find_max_expected_serial_parallel();
+    //compare_expected_transformed_serial_parallel();
 }
