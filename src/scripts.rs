@@ -27,6 +27,7 @@ impl Graph {
                     (x + 1, y),
                     (x, y + 1),
                 ] {
+                    // use that forall x in usize holds x >= 0
                     if nx < len && ny < len {
                         edges.add_entry_in_last_row(ny * len + nx);
                     }
@@ -39,7 +40,10 @@ impl Graph {
 
     #[allow(dead_code)]
     pub fn new_torus_grid(len: usize) -> Self {
+        assert!(len > 0);
         let mut edges = BoolCSR::new();
+        // walk in both x and y for len steps. this is equivalent to starting at 0,
+        // except we can always subtract 1 to find for previous vertex.
         for y in len..(2 * len) {
             for x in len..(2 * len) {
                 edges.start_new_row();
@@ -480,17 +484,7 @@ fn pebble_frequencies(walks: &[Vec<Step>]) -> (Vec<usize>, usize) {
             frequencies[*pebble] += 1;
         }
     }
-    let max_pebble = {
-        let mut best_i = 0;
-        let mut best_val = 0;
-        for (i, &val) in izip!(0.., &frequencies) {
-            if val > best_val {
-                best_i = i;
-                best_val = val;
-            }
-        }
-        best_i
-    };
+    let max_pebble = frequencies.iter().position_max().unwrap_or(0);
     (frequencies, max_pebble)
 }
 
@@ -832,7 +826,7 @@ fn plot_functions(name: &str, xs: &[usize], yss: &[(Vec<f64>, String)]) -> PlotR
         .caption(name, ("sans-serif", 30).into_font())
         .margin(10)
         .x_label_area_size(30)
-        .y_label_area_size(30)
+        .y_label_area_size(60)
         .build_cartesian_2d(x_min..x_max, y_min..y_max)?;
     chart.configure_mesh().draw()?;
 
@@ -842,7 +836,8 @@ fn plot_functions(name: &str, xs: &[usize], yss: &[(Vec<f64>, String)]) -> PlotR
         let series =
             chart.draw_series(LineSeries::new(izip!(xs, ys).map(|(&x, &y)| (x, y)), color))?;
         if !name.is_empty() {
-            series.label(name);
+            let draw_line = move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], color);
+            series.label(name).legend(draw_line);
             draw_legend = true;
         }
     }
@@ -852,6 +847,7 @@ fn plot_functions(name: &str, xs: &[usize], yss: &[(Vec<f64>, String)]) -> PlotR
             .configure_series_labels()
             .background_style(WHITE.mix(0.8))
             .border_style(BLACK)
+            .position(SeriesLabelPosition::MiddleLeft)
             .draw()?;
     }
 
@@ -901,8 +897,10 @@ fn longest_walk_transformed_distribution() {
     plot_functions("histogram-longest-walk", &xs, &yss).ok();
 }
 
+/// for a pebble to reach it's final resting vertex the i-th fastest, at x = i is shown how many steps this takes on average.
+/// note: this means the serial pebbles are sorted by walk length after the simulation.
 #[allow(dead_code)]
-fn walk_lengths_distributions() {
+fn walk_lengths_average() {
     use rayon::prelude::*;
 
     let len = FIXED_LEN;
@@ -912,7 +910,8 @@ fn walk_lengths_distributions() {
     let [serial_res, parallel_res] = range
         .par_iter()
         .map(|_| {
-            let serial = simulate_walk_lengths_serial(&graph, 0);
+            let mut serial = simulate_walk_lengths_serial(&graph, 0);
+            serial.sort();
             let parallel = simulate_walk_lengths_parallel(&graph, 0);
             [serial, parallel]
         })
@@ -932,7 +931,7 @@ fn walk_lengths_distributions() {
         (serial_f64, "serial".to_string()),
         (parallel_f64, "parallel".to_string()),
     ];
-    plot_functions("walk-lengths-distribution", &xs, &yss).ok();
+    plot_functions("walk-lengths-average", &xs, &yss).ok();
 }
 
 fn print_config_info() {
@@ -957,8 +956,8 @@ fn build_graph(len: usize) -> Graph {
 /// if an expected value is estimated by averaging over random samples, this is the number of samples taken.
 const SAMPLES_PER_EXPERIMENT: usize = 1_000_000;
 /// fix vertex `0` as starting position, not test (half of) all vertices.
-/// note: testing half of the vertices suffice in the other case, because all examined graphs have enough symmetry.
-const START_AT_0: bool = false;
+/// note: testing half of the vertices suffices in the other case, because all examined graphs have enough symmetry.
+const START_AT_0: bool = true;
 /// if some function assembles only a single graph, this is the used len.
 const FIXED_LEN: usize = 40;
 /// after finishing the simulation, should all walks be printed / plotted
@@ -976,13 +975,13 @@ const PRINT_PAUSE_TIME: std::time::Duration = std::time::Duration::from_millis(1
 pub fn scripts_main() {
     print_config_info();
 
-    print_stationary_distribution(0.00000001);
+    //print_stationary_distribution(0.00000001);
     //test_walk_lengths_once();
     //test_walks_once();
     //test_transformed_walk_lengths_serial();
     //test_transformed_walk_lengths_parallel();
     //longest_walk_transformed_distribution();
-    //walk_lengths_distributions();
+    walk_lengths_average();
 
     //find_max_expected_serial_parallel();
     //compare_expected_transformed_serial_parallel();
