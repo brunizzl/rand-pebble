@@ -135,12 +135,13 @@ pub fn find_stationary_distribution(graph: &Graph, eps: f64) -> (Vec<isize>, usi
     let mut all_visits = vec![0isize; graph.nr_vertices()];
     let mut nr_steps = 1;
     let mut curr_pos = 0;
-    let mut lcg = crate::rand_lcg::Lcg::new(0);
+    use rand::Rng;
+    let mut rng = rand::rng();
     loop {
         for _ in 0..nr_steps {
             curr_visits[curr_pos] += 1;
             let curr_neighs = &graph.edges[curr_pos];
-            curr_pos = curr_neighs[(lcg.gen_u32() as usize) % curr_neighs.len()];
+            curr_pos = curr_neighs[rng.random_range(0..curr_neighs.len())];
         }
         let cum_relative_diff = izip!(&curr_visits, &all_visits)
             .map(|(&a, &b)| ((a - b).abs() as f64) / (isize::max(a, b) as f64))
