@@ -5,8 +5,8 @@ use crate::bool_csr::BoolCSR;
 type PlotRes = Result<(), Box<dyn std::error::Error>>;
 
 pub struct Graph {
-    /// `edges[v]` lists all vertex neighboring the vertex `v`.
-    edges: BoolCSR,
+    /// `edges[v]` lists all vertices neighboring the vertex `v`.
+    pub edges: BoolCSR,
     /// either the number of vertices or the squareroot thereof.
     /// this value is only used for prettier printing.
     len: usize,
@@ -43,7 +43,7 @@ impl Graph {
         assert!(len > 0);
         let mut edges = BoolCSR::new();
         // walk in both x and y for len steps. this is equivalent to starting at 0,
-        // except we can always subtract 1 to find for previous vertex.
+        // except we can always subtract 1 to find neighbors.
         for y in len..(2 * len) {
             for x in len..(2 * len) {
                 edges.start_new_row();
@@ -100,6 +100,34 @@ impl Graph {
         edges.add_row([len - 2, 0].into_iter());
 
         let name = "circle";
+        Self { edges, len, name }
+    }
+
+    /// builds an undirected graph from edges stored as pairs of vertices.
+    /// the circle over 4 vertices (C_4) is build as an example:
+    /// ```
+    /// use itertools::Itertools;
+    /// use rand_pebble::scripts::*;
+    /// let g = Graph::new_from_edges(&[(0, 1), (1, 2), (2, 3), (3, 0)], 4, 2, "C_4");
+    /// assert_eq!(&g.edges.iter_rows().collect_vec(), &[&[1, 3], &[0, 2], &[1, 3], &[0, 2]]);
+    /// ```
+    #[allow(dead_code)]
+    pub fn new_from_edges(
+        edges: &[(usize, usize)],
+        nr_vertices: usize,
+        len: usize,
+        name: &'static str,
+    ) -> Self {
+        let mut neighborss = vec![Vec::new(); nr_vertices];
+        for &(u, v) in edges {
+            neighborss[u].push(v);
+            neighborss[v].push(u);
+        }
+        let mut edges = BoolCSR::new();
+        for mut neighbors in neighborss {
+            neighbors.sort();
+            edges.add_row(neighbors.into_iter().dedup());
+        }
         Self { edges, len, name }
     }
 
